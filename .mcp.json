@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "dgs-postgres": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-postgres",
+        "${DGS_DB_CONNECTION_STRING}"
+      ]
+    }
+  }
+}
