@@ -236,6 +236,12 @@ async def chat(req: ChatRequest, request: Request):
         return await _run_conversation(req.message)
 
 
+def _usage_tokens(response) -> int:
+    """Aantal tokens van een LLM-call (voor kosten-/gebruik-zichtbaarheid)."""
+    usage = getattr(response, "usage", None)
+    return getattr(usage, "total_tokens", 0) or 0
+
+
 async def _run_conversation(message: str) -> ChatResponse:
     messages = [
         {"role": "system", "content": SCHEMA_CONTEXT},
@@ -252,6 +258,7 @@ async def _run_conversation(message: str) -> ChatResponse:
     sql_used = None
     query_data = None
     loop_count = 0
+    total_tokens = _usage_tokens(response)
 
     while response.choices[0].finish_reason == "tool_calls":
         loop_count += 1
@@ -298,7 +305,13 @@ async def _run_conversation(message: str) -> ChatResponse:
             tools=[SQL_TOOL],
             messages=messages,
         )
+        total_tokens += _usage_tokens(response)
 
     answer = response.choices[0].message.content or "Geen antwoord gegenereerd."
+
+    logger.info(
+        "Chat afgerond: model=%s tokens=%d tool_loops=%d sql=%s",
+        _model, total_tokens, loop_count, "ja" if sql_used else "nee",
+    )
 
     return ChatResponse(answer=answer, sql=sql_used, data=query_data)

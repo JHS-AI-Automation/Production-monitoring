@@ -76,3 +76,18 @@ async def check_health() -> bool:
     except Exception:
         logger.exception("Health check failed")
         return False
+
+
+def pool_stats() -> dict | None:
+    """Momentopname van de connection-pool, voor /api/health en /api/metrics."""
+    if _pool is None:
+        return None
+    size = _pool.get_size()
+    idle = _pool.get_idle_size()
+    return {
+        "min_size": _pool.get_min_size(),
+        "max_size": _pool.get_max_size(),
+        "size": size,
+        "idle": idle,
+        "in_use": size - idle,
+    }

@@ -1,0 +1,3 @@
+# Dev/test-dependencies (niet nodig in productie).
+-r requirements.txt
+pytest==8.3.4
