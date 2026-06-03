@@ -19,7 +19,17 @@
 //
 // ============================================================
 
-export default {
+interface BrandConfig {
+  appName: string;
+  subtitle: string;
+  footer: string;
+  logo: string;
+  colors: Record<string, string>;
+  lineColors: readonly [string, string, string, string];
+  chartAccent: string;
+}
+
+const brand: BrandConfig = {
   appName: "DGS Optimax",
   subtitle: "Productie Monitoring",
   footer: "DGS Haaksbergen",
@@ -34,9 +44,11 @@ export default {
     400: "#f04e54",
     300: "#f58a8f",
     100: "#fce4e6",
-    50:  "#fef2f3",
+    50: "#fef2f3",
   },
 
   lineColors: ["#ED1C24", "#0284c7", "#16a34a", "#ca8a04"],
   chartAccent: "#ED1C24",
 };
+
+export default brand;

@@ -24,13 +24,8 @@ import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
 import LoadingSpinner from "../components/LoadingSpinner";
 import ProductionFlowDiagram from "../components/ProductionFlowDiagram";
-import brand from "../brand.js";
-
-function yesterday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
+import brand from "../brand";
+import { yesterday } from "../lib/date";
 
 const LINE_COLORS = brand.lineColors;
 const LINE_NAMES = ["Lijn 1", "Lijn 2", "Lijn 3", "Lijn 4"];

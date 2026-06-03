@@ -33,11 +33,12 @@ palletstatus:
    Per uur het percentage "klaar" per station, voor tijdlijn-analyse
 """
 
-from datetime import date, timedelta
+from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from backend.database import get_connection
+from backend.timewindow import validate_date
 
 router = APIRouter(prefix="/api/pallets", tags=["pallets"])
 
@@ -49,18 +50,10 @@ STATIONS = [
 ]
 
 
-def _validate_date(target_date: date | None) -> date:
-    if target_date is None:
-        return date.today() - timedelta(days=1)
-    if target_date > date.today():
-        raise HTTPException(400, f"Datum {target_date} ligt in de toekomst")
-    return target_date
-
-
 @router.get("/summary")
 async def get_pallet_summary(target_date: date = Query(default=None, alias="date")):
     """Dagelijkse palletstatus-samenvatting per station."""
-    target_date = _validate_date(target_date)
+    target_date = validate_date(target_date)
 
     async with get_connection() as conn:
         # --- Bezettingsgraad per station ---
@@ -105,7 +98,7 @@ async def get_pallet_summary(target_date: date = Query(default=None, alias="date
                     / NULLIF(COUNT(*), 0), 1) AS s6015_none_pct
 
             FROM palletstatus
-            WHERE time::date = $1
+            WHERE time >= $1::date AND time < $1::date + 1
             """,
             target_date,
         )
@@ -130,7 +123,7 @@ async def get_pallet_summary(target_date: date = Query(default=None, alias="date
 @router.get("/hourly")
 async def get_hourly_pallet_status(target_date: date = Query(default=None, alias="date")):
     """Bezettingsgraad per station per uur (voor tijdlijn-grafiek)."""
-    target_date = _validate_date(target_date)
+    target_date = validate_date(target_date)
 
     async with get_connection() as conn:
         # --- Bezettingsgraad per uur per station ---
@@ -150,7 +143,7 @@ async def get_hourly_pallet_status(target_date: date = Query(default=None, alias
                 ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6015 = 300)
                     / NULLIF(COUNT(*), 0), 1) AS s6015_ready_pct
             FROM palletstatus
-            WHERE time::date = $1
+            WHERE time >= $1::date AND time < $1::date + 1
             GROUP BY date_trunc('hour', time)
             ORDER BY hour
             """,

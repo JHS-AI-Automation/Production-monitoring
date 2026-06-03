@@ -180,6 +180,47 @@ export function fetchAlarmImpact(date: string): Promise<AlarmImpact> {
   return get(`/api/production/alarm-impact?date=${date}`);
 }
 
+export interface OeeLineData {
+  line: number;
+  name: string;
+  oee: number;
+  availability: number;
+  performance: number;
+  quality: number;
+  downtime_minutes: number;
+  speed_loss_minutes: number;
+}
+
+export interface OeeLosses {
+  planned_time: number;
+  downtime_loss: number;
+  speed_loss: number;
+  quality_loss: number;
+  effective_time: number;
+}
+
+export interface OeeSixBigLoss {
+  category: string;
+  type: string;
+  events?: number;
+  minutes?: number;
+}
+
+export interface OeeData {
+  date: string;
+  oee: number | null;
+  availability: number | null;
+  performance: number | null;
+  quality: number;
+  per_line: OeeLineData[];
+  losses: OeeLosses | null;
+  six_big_losses: OeeSixBigLoss[];
+}
+
+export function fetchOee(date: string): Promise<OeeData> {
+  return get(`/api/production/oee?date=${date}`);
+}
+
 // ── Pallet KPI's ────────────────────────────────────────────────────
 
 export interface PalletStation {

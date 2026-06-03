@@ -14,6 +14,15 @@ class Settings:
     app_host: str
     openrouter_api_key: str
     chat_model: str
+    # Aparte read-only rol voor de AI-chat. Valt terug op de hoofd-credentials
+    # als ze niet zijn gezet (dan deelt de chat de hoofd-pool).
+    chat_db_user: str
+    chat_db_password: str
+    # TLS naar OpenRouter. Default veilig (verify=True). Achter SSL-inspectie/proxy
+    # kan een CA-bundle-pad worden gezet (aanbevolen) of, als laatste redmiddel,
+    # verificatie worden uitgezet via CHAT_TLS_VERIFY=false.
+    chat_tls_verify: bool
+    chat_ca_bundle: str
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -33,4 +42,8 @@ class Settings:
             app_host=os.environ.get("APP_HOST", "0.0.0.0"),
             openrouter_api_key=os.environ.get("OPENROUTER_API_KEY", ""),
             chat_model=os.environ.get("CHAT_MODEL", "anthropic/claude-sonnet-4"),
+            chat_db_user=os.environ.get("CHAT_DB_USER", ""),
+            chat_db_password=os.environ.get("CHAT_DB_PASSWORD", ""),
+            chat_tls_verify=os.environ.get("CHAT_TLS_VERIFY", "true").lower() != "false",
+            chat_ca_bundle=os.environ.get("CHAT_CA_BUNDLE", ""),
         )

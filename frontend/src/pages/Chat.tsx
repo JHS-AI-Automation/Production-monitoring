@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { SendHorizontal, Database, ChevronDown, ChevronRight } from "lucide-react";
+import { SendHorizontal, Database, ChevronDown, ChevronRight, Trash2 } from "lucide-react";
 import { sendChatMessage, type ChatMessage } from "../api";
 
 const SUGGESTIONS = [
@@ -82,13 +82,24 @@ function DataTable({ data }: { data: Record<string, unknown>[] }) {
 }
 
 const MAX_MESSAGES = 100;
+const STORAGE_KEY = "dgs-optimax-chat-history";
 
 function trimMessages(msgs: ChatMessage[]): ChatMessage[] {
   return msgs.length > MAX_MESSAGES ? msgs.slice(-MAX_MESSAGES) : msgs;
 }
 
+// Geschiedenis bewaren in localStorage zodat hij blijft staan na wegnavigeren of refresh.
+function loadMessages(): ChatMessage[] {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as ChatMessage[]) : [];
+  } catch {
+    return [];
+  }
+}
+
 export default function Chat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>(loadMessages);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -97,6 +108,24 @@ export default function Chat() {
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
+
+  // Bij elke wijziging de geschiedenis persisteren (of wissen als hij leeg is).
+  useEffect(() => {
+    try {
+      if (messages.length > 0) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+      } else {
+        localStorage.removeItem(STORAGE_KEY);
+      }
+    } catch {
+      // localStorage kan vol/uit staan; geschiedenis-persistentie is niet kritisch.
+    }
+  }, [messages]);
+
+  function clearHistory() {
+    setMessages([]);
+    inputRef.current?.focus();
+  }
 
   async function send(text?: string) {
     const msg = (text ?? input).trim();
@@ -129,11 +158,23 @@ export default function Chat() {
 
   return (
     <div className="flex flex-col h-full -m-4 md:-m-8">
-      <div className="px-8 py-4 border-b border-gray-200 bg-white">
-        <h1 className="text-lg md:text-xl font-bold text-gray-800">Vraag het aan de data</h1>
-        <p className="text-sm text-gray-500 mt-0.5">
-          Stel vragen over alarmen, productie en palletstatus in gewoon Nederlands
-        </p>
+      <div className="px-8 py-4 border-b border-gray-200 bg-white flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-lg md:text-xl font-bold text-gray-800">Vraag het aan de data</h1>
+          <p className="text-sm text-gray-500 mt-0.5">
+            Stel vragen over alarmen, productie en palletstatus in gewoon Nederlands
+          </p>
+        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={clearHistory}
+            className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-sm text-gray-500 border border-gray-200 rounded-lg hover:bg-gray-50 hover:text-gray-700 transition-colors"
+            title="Wis de gespreksgeschiedenis"
+          >
+            <Trash2 size={15} />
+            <span className="hidden sm:inline">Wis gesprek</span>
+          </button>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto px-8 py-6 space-y-4">

@@ -9,3 +9,11 @@ static/
 frontend/dist/
 .vite/
 logs/
+
+# TypeScript wordt door Vite gebundeld; tsc draait alleen als type-check (noEmit).
+# Stray .js naast .tsx is build-output en hoort niet in de repo.
+frontend/src/**/*.js
+frontend/tsconfig.tsbuildinfo
+
+# Office tijdelijke lock-bestanden
+~$*

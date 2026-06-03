@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
 import { LayoutDashboard, List, Factory, Package, TrendingUp, MessageSquare, Menu, X } from "lucide-react";
-import brand from "../brand.js";
+import brand from "../brand";
 
 const NAV = [
   { to: "/", label: "Overzicht", icon: LayoutDashboard },

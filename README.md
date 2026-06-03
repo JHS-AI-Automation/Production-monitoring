@@ -3,9 +3,14 @@
 Optimax: interactief productie- en alarmdashboard voor de DGS-fabriek. Leest uit dezelfde PostgreSQL database als het bestaande alarm-report, maar biedt een interactieve UI in plaats van een dagelijkse e-mail.
 
 **Features:**
-- Overzicht met KPI-kaarten, top-alarmen bar chart en severity pie chart
-- Doorzoekbare alarmenlijst met filters (severity, zoektekst) en paginering
-- Trendgrafiek (7/14/30 dagen) met geactiveerde vs. verholpen alarmen
+- **Overzicht** met KPI-kaarten, OEE, top-alarmen bar chart en severity pie chart
+- **Alarmen** doorzoekbare lijst met filters (severity, zoektekst), paginering en openstaande alarmen
+- **Productie** dag-KPI's, OEE per lijn, lijnverdeling-diagram en alarm-impact
+- **Pallets** bezettingsgraad per station (status 100/200/300) en per uur
+- **Trends** alarmen per dag (7/14/30 dagen)
+- **Chat** natuurlijke-taal vragen over de data (LLM vertaalt naar read-only SQL)
+
+> Voor architectuur, dataflow, pool-model en schaalbaarheid: zie [ARCHITECTURE.md](ARCHITECTURE.md).
 
 ---
 
@@ -56,16 +61,75 @@ De Vite dev server draait op `http://localhost:5173` en proxied `/api` naar de b
 
 ---
 
+## Lokaal met een nep-database
+
+Voor ontwikkelen zonder VPN naar de DGS-fabriek draait er een **nep-database in Docker** die
+de productie-database nabootst. Productie gebruikt **per-dag gepartitioneerde tabellen**
+(RANGE op `time`), dus de lokale prod-spiegel doet dat ook.
+
+```bash
+# 1. Prod-spiegel starten (gepartitioneerd, poort 5434) of de simpele dev-DB (poort 5433)
+#    De prod-spiegel container heet dgs-db-local.
+
+# 2. Partitie-bewust seeden (maakt dagpartities + vult alarms/capacity/pallets + indexen)
+python scripts/seed_partitioned.py --days 14 --clear > seed.sql
+docker exec -i dgs-db-local psql -U dgs -d db_dgs_01 < seed.sql
+
+# 3. .env naar de nep-DB wijzen (DB_HOST=localhost, DB_PORT=5434, DB_USER=dgs) en starten
+uvicorn backend.main:app --reload --port 8080
+```
+
+- `scripts/seed_partitioned.py` is voor de **gepartitioneerde** prod-spiegel.
+- `scripts/generate_dummy_data.py` is voor een **vlakke** dev-DB (geen partities).
+- Beide gebruiken statuscodes 100/200/300 voor pallets (matcht de queries).
+
+Voor de chat is een aparte read-only rol nodig (zie env-variabelen hieronder):
+
+```sql
+CREATE ROLE chat_readonly LOGIN PASSWORD '...';
+GRANT CONNECT ON DATABASE db_dgs_01 TO chat_readonly;
+GRANT USAGE ON SCHEMA public TO chat_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO chat_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO chat_readonly;
+```
+
+---
+
+## Environment-variabelen
+
+Zie `.env.example`. Belangrijkste:
+
+| Variabele | Doel |
+|---|---|
+| `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | Hoofd-databaseconnectie |
+| `APP_PORT` / `APP_HOST` | Waar de app luistert |
+| `LOG_FORMAT` (`text`/`json`) / `LOG_LEVEL` | Logging |
+| `OPENROUTER_API_KEY` | Sleutel voor de chat-functie (leeg = chat uit) |
+| `CHAT_MODEL` | LLM-model via OpenRouter (default `anthropic/claude-sonnet-4`) |
+| `CHAT_DB_USER` / `CHAT_DB_PASSWORD` | Read-only DB-rol voor AI-SQL (leeg = chat deelt hoofd-pool) |
+| `CHAT_TLS_VERIFY` | TLS naar OpenRouter (default `true`; `false` alleen achter SSL-inspectie) |
+| `CHAT_CA_BUNDLE` | Pad naar bedrijfs-CA-bundle (aanbevolen alternatief voor `CHAT_TLS_VERIFY=false`) |
+
+---
+
 ## Projectstructuur
 
 | Map/Bestand | Doel |
 |---|---|
-| `backend/main.py` | FastAPI app, dient API + statische frontend |
-| `backend/database.py` | Async PostgreSQL connectie pool (asyncpg) |
-| `backend/routers/alarms.py` | API endpoints: stats, top, list, trends |
+| `backend/main.py` | FastAPI app, dient API + statische frontend, logging, lifespan |
+| `backend/database.py` | Async PostgreSQL pool-factory + connectie (asyncpg) |
 | `backend/config.py` | Settings uit environment variabelen |
-| `frontend/` | React + Vite + TypeScript + Tailwind |
-| `frontend/src/pages/` | Overview, AlarmList, Trends pagina's |
+| `backend/timewindow.py` | Gedeelde datum-validatie (`validate_date`/`validate_range`) |
+| `backend/routers/alarms.py` | Alarm-endpoints: stats, top, list, trends, open |
+| `backend/routers/production.py` | Productie-KPI's: summary, hourly, minutely, trends, alarm-impact, OEE |
+| `backend/routers/pallets.py` | Palletstatus: summary, hourly |
+| `backend/routers/chat.py` | AI-chat: NL-vraag → read-only SQL → antwoord |
+| `frontend/src/pages/` | Overview, AlarmList, Production, Pallets, Trends, Chat |
+| `frontend/src/lib/` | Gedeelde helpers: `date.ts`, `format.ts`, `colors.ts` |
+| `frontend/src/brand.ts` | Branding (kleuren, logo, namen) op één plek |
+| `scripts/seed_partitioned.py` | Nep-data voor de gepartitioneerde prod-spiegel |
+| `scripts/generate_dummy_data.py` | Nep-data voor een vlakke dev-DB |
+| `scripts/load_test.py` | Load-test (gelijktijdige gebruikers, latency/throughput) |
 | `Dockerfile` | Multi-stage build (Node + Python) |
 | `docker-compose.yml` | Productie container setup |
 
@@ -75,8 +139,18 @@ De Vite dev server draait op `http://localhost:5173` en proxied `/api` naar de b
 |---------|-----|--------------|
 | GET | `/api/alarms/stats?date=YYYY-MM-DD` | KPI statistieken voor een dag |
 | GET | `/api/alarms/top?date=YYYY-MM-DD&limit=10` | Top N alarmen op trigger count |
-| GET | `/api/alarms/list?date=YYYY-MM-DD&severity=Error&search=pomp&page=1` | Gefilterde alarmenlijst |
-| GET | `/api/alarms/trends?from=YYYY-MM-DD&to=YYYY-MM-DD` | Dagelijkse alarm counts voor trendgrafiek |
+| GET | `/api/alarms/list?date=...&severity=Error&search=pomp&page=1` | Gefilterde, gepagineerde alarmenlijst |
+| GET | `/api/alarms/open?date=YYYY-MM-DD` | Nog openstaande (niet-verholpen) alarmen |
+| GET | `/api/alarms/trends?from=...&to=...` | Dagelijkse alarm counts voor trendgrafiek |
+| GET | `/api/production/summary?date=...` | Dag-KPI's: totalen, stilstand, piekuur, lijn-balans, MTTR |
+| GET | `/api/production/hourly?date=...` | Productie per lijn per uur |
+| GET | `/api/production/minutely?date=...&hour=H` | Productie per minuut binnen een uur |
+| GET | `/api/production/trends?from=...&to=...` | Dagelijkse productie-trend |
+| GET | `/api/production/alarm-impact?date=...` | Productie tijdens vs zonder alarm + correlatie per uur |
+| GET | `/api/production/oee?date=...` | OEE per lijn (Availability × Performance × Quality) |
+| GET | `/api/pallets/summary?date=...` | Bezettingsgraad per palletstation |
+| GET | `/api/pallets/hourly?date=...` | Bezettingsgraad (% klaar) per uur |
+| POST | `/api/chat` `{"message": "..."}` | NL-vraag over de data (read-only SQL via LLM) |
 | GET | `/api/health` | Gezondheidscheck (database connectiviteit) |
 
 ## Troubleshooting

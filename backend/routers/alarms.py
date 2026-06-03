@@ -1,41 +1,18 @@
-from datetime import date, timedelta
+from datetime import date
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from backend.database import get_connection
+from backend.timewindow import validate_date, validate_range
 
 router = APIRouter(prefix="/api/alarms", tags=["alarms"])
-
-MAX_TREND_DAYS = 365
-
-
-def _validate_date(target_date: date | None) -> date:
-    if target_date is None:
-        return date.today() - timedelta(days=1)
-    if target_date > date.today():
-        raise HTTPException(400, f"Datum {target_date} ligt in de toekomst")
-    return target_date
-
-
-def _validate_range(date_from: date | None, date_to: date | None) -> tuple[date, date]:
-    if date_to is None:
-        date_to = date.today() - timedelta(days=1)
-    if date_from is None:
-        date_from = date_to - timedelta(days=29)
-    if date_to > date.today():
-        raise HTTPException(400, f"Einddatum {date_to} ligt in de toekomst")
-    if date_from > date_to:
-        raise HTTPException(400, "Startdatum mag niet na einddatum liggen")
-    if (date_to - date_from).days > MAX_TREND_DAYS:
-        raise HTTPException(400, f"Maximale periode is {MAX_TREND_DAYS} dagen")
-    return date_from, date_to
 
 
 @router.get("/open")
 async def get_open_alarms(target_date: date = Query(default=None, alias="date")):
     """Openstaande alarmen: per alarmmessage het laatste event pakken,
     als dat incomingstate=1 is, is het alarm nog niet verholpen."""
-    target_date = _validate_date(target_date)
+    target_date = validate_date(target_date)
 
     async with get_connection() as conn:
         rows = await conn.fetch(
@@ -45,7 +22,7 @@ async def get_open_alarms(target_date: date = Query(default=None, alias="date"))
                 SELECT DISTINCT ON (alarmmessage)
                     alarmmessage, severityclass, incomingstate, time
                 FROM plc_alarms
-                WHERE time::date = $1
+                WHERE time >= $1::date AND time < $1::date + 1
                 ORDER BY alarmmessage, time DESC
             ) latest
             WHERE incomingstate = 1
@@ -66,7 +43,7 @@ async def get_open_alarms(target_date: date = Query(default=None, alias="date"))
 
 @router.get("/stats")
 async def get_stats(target_date: date = Query(default=None, alias="date")):
-    target_date = _validate_date(target_date)
+    target_date = validate_date(target_date)
 
     async with get_connection() as conn:
         row = await conn.fetchrow(
@@ -77,7 +54,7 @@ async def get_stats(target_date: date = Query(default=None, alias="date")):
                 MIN(time) AS first_alarm,
                 MAX(time) AS last_alarm
             FROM plc_alarms
-            WHERE time::date = $1
+            WHERE time >= $1::date AND time < $1::date + 1
             """,
             target_date,
         )
@@ -96,7 +73,7 @@ async def get_top_alarms(
     target_date: date = Query(default=None, alias="date"),
     limit: int = Query(default=10, ge=1, le=50),
 ):
-    target_date = _validate_date(target_date)
+    target_date = validate_date(target_date)
 
     async with get_connection() as conn:
         rows = await conn.fetch(
@@ -107,9 +84,9 @@ async def get_top_alarms(
                 COUNT(*) FILTER (WHERE incomingstate = 0) AS resolve_count,
                 severityclass
             FROM plc_alarms
-            WHERE time::date = $1
+            WHERE time >= $1::date AND time < $1::date + 1
             GROUP BY alarmmessage, severityclass
-            ORDER BY trigger_count DESC
+            ORDER BY trigger_count DESC, alarmmessage
             LIMIT $2
             """,
             target_date,
@@ -135,9 +112,9 @@ async def get_alarm_list(
     page: int = Query(default=1, ge=1),
     per_page: int = Query(default=50, ge=10, le=200),
 ):
-    target_date = _validate_date(target_date)
+    target_date = validate_date(target_date)
 
-    conditions = ["time::date = $1"]
+    conditions = ["time >= $1::date AND time < $1::date + 1"]
     params: list = [target_date]
     idx = 2
 
@@ -197,7 +174,7 @@ async def get_trends(
     date_from: date = Query(default=None, alias="from"),
     date_to: date = Query(default=None, alias="to"),
 ):
-    date_from, date_to = _validate_range(date_from, date_to)
+    date_from, date_to = validate_range(date_from, date_to)
 
     async with get_connection() as conn:
         rows = await conn.fetch(
@@ -207,7 +184,7 @@ async def get_trends(
                 COUNT(*) FILTER (WHERE incomingstate = 1) AS triggered,
                 COUNT(*) FILTER (WHERE incomingstate = 0) AS resolved
             FROM plc_alarms
-            WHERE time::date BETWEEN $1 AND $2
+            WHERE time >= $1::date AND time < $2::date + 1
             GROUP BY day
             ORDER BY day
             """,

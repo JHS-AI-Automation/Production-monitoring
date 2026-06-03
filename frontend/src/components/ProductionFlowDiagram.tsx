@@ -5,7 +5,7 @@ import {
   type HourlyProduction,
   type MinutelyProduction,
 } from "../api";
-import brand from "../brand.js";
+import brand from "../brand";
 
 interface Props {
   hourlyData: HourlyProduction[];
@@ -207,13 +207,16 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
 
   if (!d) return null;
 
-  const overflow = d.line_0 + d.line_3;
-  const redistPct = d.total > 0 ? (overflow / d.total) * 100 : 0;
+  // Model: de robot legt af op lijn 1 en 4 (robot-output). Wat daarna overblijft
+  // is de overflow op lijn 2 en 3. Een hoog overflow-percentage = de robot kan het
+  // aanbod niet bijhouden.
+  const overflow = d.line_1 + d.line_2;
+  const overflowPct = d.total > 0 ? (overflow / d.total) * 100 : 0;
   const maxLine = Math.max(d.line_0, d.line_1, d.line_2, d.line_3, 1);
   const hasOverflow = overflow > 0;
-  const arrowCol = redistColor(redistPct);
-  const arrowW = redistPct > 20 ? 3.5 : 2.5;
-  const markerName = redistPct > 20 ? "red" : redistPct > 5 ? "amber" : "green";
+  const arrowCol = redistColor(overflowPct);
+  const arrowW = overflowPct > 20 ? 3.5 : 2.5;
+  const markerName = overflowPct > 20 ? "red" : overflowPct > 5 ? "amber" : "green";
 
   const shiftHours = hourlyData.filter(h => {
     const hr = parseInt(h.hour);
@@ -231,23 +234,23 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
               : `piekuur (${peak?.hour ?? "-"})`}
           </span>
         </h2>
-        {redistPct > 0 && (
+        {overflowPct > 0 && (
           <span
             className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-              redistPct > 20
+              overflowPct > 20
                 ? "bg-red-50 text-red-600 ring-1 ring-red-200"
-                : redistPct > 5
+                : overflowPct > 5
                   ? "bg-amber-50 text-amber-600 ring-1 ring-amber-200"
                   : "bg-green-50 text-green-600 ring-1 ring-green-200"
             }`}
           >
-            {redistPct.toFixed(0)}% herverdeling naar lijn 1 en 4
+            {overflowPct.toFixed(0)}% overflow naar lijn 2 en 3
           </span>
         )}
       </div>
 
       {/* Factory Schematic */}
-      <svg viewBox="0 0 800 385" className="w-full mx-auto" style={{ maxWidth: 720 }}>
+      <svg viewBox="0 0 820 410" className="w-full mx-auto" style={{ maxWidth: 760 }}>
         <defs>
           <style>{`
             @keyframes dash{from{stroke-dashoffset:16}to{stroke-dashoffset:0}}
@@ -271,63 +274,84 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
           </marker>
         </defs>
 
-        {/* Line boxes */}
-        <LineBox x={15} y={30} name="Lijn 1" tag="OVERFLOW"
-          count={d.line_0} color={LINE_COLORS[0]} maxVal={maxLine} />
-        <LineBox x={620} y={30} name="Lijn 4" tag="OVERFLOW"
-          count={d.line_3} color={LINE_COLORS[3]} maxVal={maxLine} />
-        <LineBox x={185} y={240} name="Lijn 2" tag="INVOER"
-          count={d.line_1} color={LINE_COLORS[1]} maxVal={maxLine} />
-        <LineBox x={450} y={240} name="Lijn 3" tag="INVOER"
-          count={d.line_2} color={LINE_COLORS[2]} maxVal={maxLine} />
+        {/* === INVOER (boven): lijn 2 en 3 voeren de robots === */}
+        <text x={410} y={12} textAnchor="middle" fontSize={10} fontWeight="600"
+          fill="#94a3b8" style={{ letterSpacing: "0.08em" }}>INVOER</text>
+        <rect x={235} y={20} width={150} height={34} rx={8} fill="#f8fafc" stroke="#e2e8f0" />
+        <text x={310} y={41} textAnchor="middle" fontSize={11} fontWeight="600" fill="#64748b">Lijn 2</text>
+        <rect x={435} y={20} width={150} height={34} rx={8} fill="#f8fafc" stroke="#e2e8f0" />
+        <text x={510} y={41} textAnchor="middle" fontSize={11} fontWeight="600" fill="#64748b">Lijn 3</text>
+        <path d="M 310 54 L 310 92" fill="none" stroke="#cbd5e1" strokeWidth={2} markerEnd="url(#a-gray)" />
+        <path d="M 510 54 L 510 92" fill="none" stroke="#cbd5e1" strokeWidth={2} markerEnd="url(#a-gray)" />
 
-        {/* Robot center */}
-        <rect x={270} y={35} width={260} height={90} rx={12}
+        {/* === ROBOTS (midden): robot 1 en 2, beide leggen af op lijn 1 en 4 === */}
+        <rect x={235} y={94} width={350} height={96} rx={12}
           fill="#f8fafc" stroke="#e2e8f0" strokeWidth={1.5} />
-        <text x={400} y={62} textAnchor="middle" fontSize={11}
-          fontWeight="600" fill="#475569"
-          style={{ letterSpacing: "0.06em" }}>
-          ROBOTARMEN
+        <text x={410} y={113} textAnchor="middle" fontSize={11} fontWeight="600"
+          fill="#475569" style={{ letterSpacing: "0.06em" }}>ROBOTARMEN</text>
+        <g transform="translate(296, 122)">
+          <rect x={0} y={0} width={28} height={28} rx={4} fill="#e2e8f0" />
+          <path d="M6 22 L6 12 L14 6 L22 12 L22 22" stroke="#475569" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx={14} cy={12} r={3} fill="#475569" />
+          <path d="M10 22 L10 17 L18 17 L18 22" stroke="#475569" strokeWidth={1.5} fill="none" />
+        </g>
+        <text x={310} y={166} textAnchor="middle" fontSize={10} fill="#64748b">Robot 1</text>
+        <g transform="translate(496, 122)">
+          <rect x={0} y={0} width={28} height={28} rx={4} fill="#e2e8f0" />
+          <path d="M6 22 L6 12 L14 6 L22 12 L22 22" stroke="#475569" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx={14} cy={12} r={3} fill="#475569" />
+          <path d="M10 22 L10 17 L18 17 L18 22" stroke="#475569" strokeWidth={1.5} fill="none" />
+        </g>
+        <text x={510} y={166} textAnchor="middle" fontSize={10} fill="#64748b">Robot 2</text>
+        <text x={410} y={183} textAnchor="middle" fontSize={9} fill="#94a3b8">
+          beide leggen af op lijn 1 en 4
         </text>
-        <g transform="translate(345, 72)">
-          <rect x={0} y={0} width={28} height={28} rx={4} fill="#e2e8f0" />
-          <path d="M6 22 L6 12 L14 6 L22 12 L22 22" stroke="#475569" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx={14} cy={12} r={3} fill="#475569" />
-          <path d="M10 22 L10 17 L18 17 L18 22" stroke="#475569" strokeWidth={1.5} fill="none" />
-        </g>
-        <g transform="translate(425, 72)">
-          <rect x={0} y={0} width={28} height={28} rx={4} fill="#e2e8f0" />
-          <path d="M6 22 L6 12 L14 6 L22 12 L22 22" stroke="#475569" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx={14} cy={12} r={3} fill="#475569" />
-          <path d="M10 22 L10 17 L18 17 L18 22" stroke="#475569" strokeWidth={1.5} fill="none" />
-        </g>
 
-        {/* Intake arrows (solid, always visible) */}
-        <path d="M 267 240 C 267 185, 345 185, 345 125"
-          fill="none" stroke="#cbd5e1" strokeWidth={2}
-          markerEnd="url(#a-gray)" />
-        <path d="M 532 240 C 532 185, 455 185, 455 125"
-          fill="none" stroke="#cbd5e1" strokeWidth={2}
-          markerEnd="url(#a-gray)" />
-
-        {/* Overflow arrows (animated dashes) */}
-        {hasOverflow && d.line_0 > 0 && (
-          <path d="M 270 80 L 180 80"
-            fill="none" stroke={arrowCol} strokeWidth={arrowW}
-            strokeDasharray="10 6" className="flow"
-            markerEnd={`url(#a-${markerName})`} />
+        {/* === ROBOT-OUTPUT (zijkanten): lijn 1 links, lijn 4 rechts === */}
+        <LineBox x={20} y={95} name="Lijn 1" tag="ROBOT"
+          count={d.line_0} color={LINE_COLORS[0]} maxVal={maxLine} />
+        <LineBox x={635} y={95} name="Lijn 4" tag="ROBOT"
+          count={d.line_3} color={LINE_COLORS[3]} maxVal={maxLine} />
+        {d.line_0 > 0 && (
+          <path d="M 235 142 L 188 142"
+            fill="none" stroke="#22c55e" strokeWidth={2.5} markerEnd="url(#a-green)" />
         )}
-        {hasOverflow && d.line_3 > 0 && (
-          <path d="M 530 80 L 620 80"
-            fill="none" stroke={arrowCol} strokeWidth={arrowW}
-            strokeDasharray="10 6" className="flow"
-            markerEnd={`url(#a-${markerName})`} />
+        {d.line_3 > 0 && (
+          <path d="M 585 142 L 632 142"
+            fill="none" stroke="#22c55e" strokeWidth={2.5} markerEnd="url(#a-green)" />
         )}
 
-        {/* Invoer label */}
-        <text x={400} y={378} textAnchor="middle" fontSize={11}
-          fill="#94a3b8">
-          ▲ Invoer producten
+        {/* === OVERFLOW (onder): rest na de robot op lijn 2 en 3 === */}
+        <LineBox x={228} y={215} name="Lijn 2" tag="OVERFLOW"
+          count={d.line_1} color={LINE_COLORS[1]} maxVal={maxLine} />
+        <LineBox x={428} y={215} name="Lijn 3" tag="OVERFLOW"
+          count={d.line_2} color={LINE_COLORS[2]} maxVal={maxLine} />
+        {hasOverflow && d.line_1 > 0 && (
+          <path d="M 310 190 L 310 213"
+            fill="none" stroke={arrowCol} strokeWidth={arrowW}
+            strokeDasharray="10 6" className="flow" markerEnd={`url(#a-${markerName})`} />
+        )}
+        {hasOverflow && d.line_2 > 0 && (
+          <path d="M 510 190 L 510 213"
+            fill="none" stroke={arrowCol} strokeWidth={arrowW}
+            strokeDasharray="10 6" className="flow" markerEnd={`url(#a-${markerName})`} />
+        )}
+
+        {/* === NA OVERFLOW: downstream-teller, nog te bepalen uit het DB-schema === */}
+        <path d="M 310 330 L 388 354"
+          fill="none" stroke="#cbd5e1" strokeWidth={2}
+          strokeDasharray="4 3" markerEnd="url(#a-gray)" />
+        <path d="M 510 330 L 432 354"
+          fill="none" stroke="#cbd5e1" strokeWidth={2}
+          strokeDasharray="4 3" markerEnd="url(#a-gray)" />
+        <rect x={300} y={356} width={220} height={42} rx={10}
+          fill="none" stroke="#cbd5e1" strokeWidth={1.5} strokeDasharray="5 4" />
+        <text x={410} y={373} textAnchor="middle" fontSize={10}
+          fontWeight="600" fill="#94a3b8" style={{ letterSpacing: "0.06em" }}>
+          NA OVERFLOW
+        </text>
+        <text x={410} y={388} textAnchor="middle" fontSize={9} fill="#94a3b8">
+          counter nog te bepalen (uit DB-schema)
         </text>
       </svg>
 
@@ -339,7 +363,7 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
         <div className="flex gap-1">
           {shiftHours.map((h) => {
             const hr = parseInt(h.hour);
-            const ov = h.line_0 + h.line_3;
+            const ov = h.line_1 + h.line_2;
             const pct = h.total > 0 ? (ov / h.total) * 100 : 0;
             const sel = hr === selectedHour;
             const isPeak = h.hour === peak?.hour && selectedHour === null;
@@ -373,11 +397,11 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
           </span>
           <span className="flex items-center gap-1">
             <span className="inline-block w-3 h-2 rounded-sm bg-amber-500 opacity-40" />
-            herverdeling
+            wat overflow
           </span>
           <span className="flex items-center gap-1">
             <span className="inline-block w-3 h-2 rounded-sm bg-red-500 opacity-40" />
-            druk
+            veel overflow
           </span>
         </div>
       </div>

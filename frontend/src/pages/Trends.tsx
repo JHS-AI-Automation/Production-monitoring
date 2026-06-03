@@ -14,17 +14,8 @@ import { useApi } from "../hooks/useApi";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
 import LoadingSpinner from "../components/LoadingSpinner";
-
-function formatRange(days: number): { from: string; to: string } {
-  const to = new Date();
-  to.setDate(to.getDate() - 1);
-  const from = new Date(to);
-  from.setDate(from.getDate() - days + 1);
-  return {
-    from: from.toISOString().slice(0, 10),
-    to: to.toISOString().slice(0, 10),
-  };
-}
+import { rangeEndingYesterday } from "../lib/date";
+import { formatDate } from "../lib/format";
 
 const RANGES = [
   { label: "7 dagen", days: 7 },
@@ -34,7 +25,7 @@ const RANGES = [
 
 export default function Trends() {
   const [days, setDays] = useState(30);
-  const { from, to } = formatRange(days);
+  const { from, to } = rangeEndingYesterday(days);
 
   const { data, loading, error, retry } = useApi<TrendPoint[]>(
     () => fetchTrends(from, to),
@@ -115,14 +106,9 @@ export default function Trends() {
               />
               <YAxis tick={{ fontSize: 11 }} />
               <Tooltip
-                labelFormatter={(d: string) => {
-                  const dt = new Date(d);
-                  return dt.toLocaleDateString("nl-NL", {
-                    weekday: "short",
-                    day: "numeric",
-                    month: "long",
-                  });
-                }}
+                labelFormatter={(d: string) =>
+                  formatDate(d, { weekday: "short", day: "numeric", month: "long" })
+                }
               />
               <Legend />
               <Line

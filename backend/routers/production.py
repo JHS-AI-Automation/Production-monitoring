@@ -8,6 +8,8 @@ capacity_perminutev2 - productie-tellers:
     - time (timestamp): meetmoment
     - counter0..counter3 (int): aantal producten geteld per lijn in die minuut
     Mapping: counter0=Lijn 1, counter1=Lijn 2, counter2=Lijn 3, counter3=Lijn 4
+    Model: lijn 1 en 4 = wat de robot aflegt (robot-output); lijn 2 en 3 = overflow
+    (de rest die na de robot overblijft).
 
 plc_alarms - alarm-events (voor cross-table KPI's):
     - time (timestamp): tijdstip event
@@ -44,49 +46,46 @@ Buiten shift wordt niet geproduceerd, stilstand alleen binnen shift geteld.
 
 7. Alarm-productie correlatie per uur
    Aantal alarmen naast totale productie per uur
+
+8. OEE (Overall Equipment Effectiveness)
+   OEE = Availability x Performance x Quality
+   - Availability = (shift_minutes - downtime) / shift_minutes
+   - Performance = actual_output / (uptime_minutes x ideal_rate)
+     ideal_rate = 95e percentiel van per-minuut output tijdens uptime
+   - Quality = 100% (geen uitvaldata beschikbaar uit PLC, placeholder)
+   Six Big Losses: Equipment Failure (Error-alarmen), Minor Stops (Warning),
+   Speed Loss (onderprestatie t.o.v. ideal rate), Quality Loss (placeholder 0)
 """
 
-from datetime import date, time, timedelta
+from datetime import date, time
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
 
 from backend.database import get_connection
+from backend.timewindow import validate_date, validate_range
 
 router = APIRouter(prefix="/api/production", tags=["production"])
 
 SHIFT_START = time(5, 0)
 SHIFT_END = time(23, 0)
 SHIFT_MINUTES = 1080
-MAX_TREND_DAYS = 365
 TZ = "Europe/Amsterdam"
 
 
-def _validate_date(target_date: date | None) -> date:
-    if target_date is None:
-        return date.today() - timedelta(days=1)
-    if target_date > date.today():
-        raise HTTPException(400, f"Datum {target_date} ligt in de toekomst")
-    return target_date
+def _line_payload(row, label_key: str, label_value) -> dict:
+    """Bouw een rij voor de productie-grafieken: 4 lijntotalen + som.
 
-
-def _validate_range(date_from: date | None, date_to: date | None) -> tuple[date, date]:
-    if date_to is None:
-        date_to = date.today() - timedelta(days=1)
-    if date_from is None:
-        date_from = date_to - timedelta(days=29)
-    if date_to > date.today():
-        raise HTTPException(400, f"Einddatum {date_to} ligt in de toekomst")
-    if date_from > date_to:
-        raise HTTPException(400, "Startdatum mag niet na einddatum liggen")
-    if (date_to - date_from).days > MAX_TREND_DAYS:
-        raise HTTPException(400, f"Maximale periode is {MAX_TREND_DAYS} dagen")
-    return date_from, date_to
+    `label_key` is "hour", "minute" of "date"; `label_value` de bijbehorende waarde.
+    Vervangt de identieke dict die in hourly/minutely/trends werd herhaald.
+    """
+    lines = {f"line_{i}": int(row[f"line_{i}"]) for i in range(4)}
+    return {label_key: label_value, **lines, "total": sum(lines.values())}
 
 
 @router.get("/summary")
 async def get_production_summary(target_date: date = Query(default=None, alias="date")):
     """Dagelijkse productie-samenvatting met kern-KPI's per lijn."""
-    target_date = _validate_date(target_date)
+    target_date = validate_date(target_date)
 
     async with get_connection() as conn:
         # --- KPI 1: Totaal productie per lijn ---
@@ -100,7 +99,7 @@ async def get_production_summary(target_date: date = Query(default=None, alias="
                 COALESCE(SUM(counter2), 0) AS line_2,
                 COALESCE(SUM(counter3), 0) AS line_3
             FROM capacity_perminutev2
-            WHERE time::date = $1
+            WHERE time >= $1::date AND time < $1::date + 1
             """,
             target_date,
         )
@@ -117,7 +116,7 @@ async def get_production_summary(target_date: date = Query(default=None, alias="
                 COUNT(*) FILTER (WHERE counter3 = 0) AS line_3,
                 COUNT(*) AS total_shift_minutes
             FROM capacity_perminutev2
-            WHERE time::date = $1
+            WHERE time >= $1::date AND time < $1::date + 1
               AND time::time BETWEEN $2 AND $3
             """,
             target_date,
@@ -134,7 +133,7 @@ async def get_production_summary(target_date: date = Query(default=None, alias="
                 date_trunc('hour', time AT TIME ZONE $2) AS hour,
                 SUM(counter0 + counter1 + counter2 + counter3) AS total
             FROM capacity_perminutev2
-            WHERE time::date = $1
+            WHERE time >= $1::date AND time < $1::date + 1
             GROUP BY date_trunc('hour', time AT TIME ZONE $2)
             ORDER BY total DESC
             LIMIT 1
@@ -162,7 +161,7 @@ async def get_production_summary(target_date: date = Query(default=None, alias="
                         PARTITION BY alarmmessage ORDER BY time
                     ) AS next_state
                 FROM plc_alarms
-                WHERE time::date = $1
+                WHERE time >= $1::date AND time < $1::date + 1
             )
             SELECT
                 ROUND(AVG(EXTRACT(EPOCH FROM (next_time - time)) / 60)::numeric, 1)
@@ -213,7 +212,7 @@ async def get_production_summary(target_date: date = Query(default=None, alias="
 @router.get("/hourly")
 async def get_hourly_production(target_date: date = Query(default=None, alias="date")):
     """Productie per lijn per uur, voor de uurlijkse productiegrafiek."""
-    target_date = _validate_date(target_date)
+    target_date = validate_date(target_date)
 
     async with get_connection() as conn:
         # --- Throughput per lijn per uur ---
@@ -228,7 +227,7 @@ async def get_hourly_production(target_date: date = Query(default=None, alias="d
                 COALESCE(SUM(counter2), 0) AS line_2,
                 COALESCE(SUM(counter3), 0) AS line_3
             FROM capacity_perminutev2
-            WHERE time::date = $1
+            WHERE time >= $1::date AND time < $1::date + 1
             GROUP BY date_trunc('hour', time AT TIME ZONE $2)
             ORDER BY hour
             """,
@@ -236,17 +235,7 @@ async def get_hourly_production(target_date: date = Query(default=None, alias="d
             TZ,
         )
 
-    return [
-        {
-            "hour": r["hour"].strftime("%H:%M"),
-            "line_0": int(r["line_0"]),
-            "line_1": int(r["line_1"]),
-            "line_2": int(r["line_2"]),
-            "line_3": int(r["line_3"]),
-            "total": sum(int(r[f"line_{i}"]) for i in range(4)),
-        }
-        for r in rows
-    ]
+    return [_line_payload(r, "hour", r["hour"].strftime("%H:%M")) for r in rows]
 
 
 @router.get("/minutely")
@@ -255,7 +244,7 @@ async def get_minutely_production(
     hour: int = Query(ge=0, le=23),
 ):
     """Per-minuut productiedata voor een specifiek uur (inzoom voor lijnverdeling)."""
-    target_date = _validate_date(target_date)
+    target_date = validate_date(target_date)
 
     async with get_connection() as conn:
         rows = await conn.fetch(
@@ -267,7 +256,7 @@ async def get_minutely_production(
                 COALESCE(SUM(counter2), 0) AS line_2,
                 COALESCE(SUM(counter3), 0) AS line_3
             FROM capacity_perminutev2
-            WHERE time::date = $1
+            WHERE time >= $1::date AND time < $1::date + 1
               AND EXTRACT(HOUR FROM time AT TIME ZONE $3) = $2
             GROUP BY date_trunc('minute', time AT TIME ZONE $3)
             ORDER BY minute
@@ -277,17 +266,7 @@ async def get_minutely_production(
             TZ,
         )
 
-    return [
-        {
-            "minute": r["minute"].strftime("%H:%M"),
-            "line_0": int(r["line_0"]),
-            "line_1": int(r["line_1"]),
-            "line_2": int(r["line_2"]),
-            "line_3": int(r["line_3"]),
-            "total": sum(int(r[f"line_{i}"]) for i in range(4)),
-        }
-        for r in rows
-    ]
+    return [_line_payload(r, "minute", r["minute"].strftime("%H:%M")) for r in rows]
 
 
 @router.get("/trends")
@@ -296,7 +275,7 @@ async def get_production_trends(
     date_to: date = Query(default=None, alias="to"),
 ):
     """Dagelijkse productie-trend over een periode, voor trendgrafiek."""
-    date_from, date_to = _validate_range(date_from, date_to)
+    date_from, date_to = validate_range(date_from, date_to)
 
     async with get_connection() as conn:
         # --- Dagelijkse productie-trend ---
@@ -310,7 +289,7 @@ async def get_production_trends(
                 COALESCE(SUM(counter2), 0) AS line_2,
                 COALESCE(SUM(counter3), 0) AS line_3
             FROM capacity_perminutev2
-            WHERE time::date BETWEEN $1 AND $2
+            WHERE time >= $1::date AND time < $2::date + 1
             GROUP BY day
             ORDER BY day
             """,
@@ -318,23 +297,14 @@ async def get_production_trends(
             date_to,
         )
 
-    return [
-        {
-            "date": r["day"].isoformat(),
-            "line_0": int(r["line_0"]),
-            "line_1": int(r["line_1"]),
-            "line_2": int(r["line_2"]),
-            "line_3": int(r["line_3"]),
-            "total": sum(int(r[f"line_{i}"]) for i in range(4)),
-        }
-        for r in rows
+    return [_line_payload(r, "date", r["day"].isoformat()) for r in rows
     ]
 
 
 @router.get("/alarm-impact")
 async def get_alarm_impact(target_date: date = Query(default=None, alias="date")):
     """Cross-table analyse: alarm-impact op productie-throughput."""
-    target_date = _validate_date(target_date)
+    target_date = validate_date(target_date)
 
     async with get_connection() as conn:
         # --- KPI 6: Alarm-impact op throughput ---
@@ -344,7 +314,7 @@ async def get_alarm_impact(target_date: date = Query(default=None, alias="date")
             WITH alarm_minutes AS (
                 SELECT DISTINCT date_trunc('minute', time) AS minute
                 FROM plc_alarms
-                WHERE time::date = $1 AND incomingstate = 1
+                WHERE time >= $1::date AND time < $1::date + 1 AND incomingstate = 1
             )
             SELECT
                 ROUND(AVG(CASE WHEN am.minute IS NOT NULL
@@ -358,7 +328,7 @@ async def get_alarm_impact(target_date: date = Query(default=None, alias="date")
             FROM capacity_perminutev2 c
             LEFT JOIN alarm_minutes am
                 ON date_trunc('minute', c.time) = am.minute
-            WHERE c.time::date = $1
+            WHERE c.time >= $1::date AND c.time < $1::date + 1
             """,
             target_date,
         )
@@ -380,7 +350,7 @@ async def get_alarm_impact(target_date: date = Query(default=None, alias="date")
                     date_trunc('hour', time) AS hour,
                     SUM(counter0 + counter1 + counter2 + counter3) AS total
                 FROM capacity_perminutev2
-                WHERE time::date = $1
+                WHERE time >= $1::date AND time < $1::date + 1
                 GROUP BY date_trunc('hour', time)
             ) p ON h.hour = p.hour
             LEFT JOIN (
@@ -388,7 +358,7 @@ async def get_alarm_impact(target_date: date = Query(default=None, alias="date")
                     date_trunc('hour', time) AS hour,
                     COUNT(*) AS alarm_count
                 FROM plc_alarms
-                WHERE time::date = $1 AND incomingstate = 1
+                WHERE time >= $1::date AND time < $1::date + 1 AND incomingstate = 1
                 GROUP BY date_trunc('hour', time)
             ) a ON h.hour = a.hour
             ORDER BY h.hour
@@ -421,4 +391,133 @@ async def get_alarm_impact(target_date: date = Query(default=None, alias="date")
             }
             for r in correlation
         ],
+    }
+
+
+@router.get("/oee")
+async def get_oee(target_date: date = Query(default=None, alias="date")):
+    """OEE (Overall Equipment Effectiveness) per lijn en totaal."""
+    target_date = validate_date(target_date)
+
+    async with get_connection() as conn:
+        stats = await conn.fetchrow(
+            """
+            SELECT
+                COUNT(*) AS total_minutes,
+                COUNT(*) FILTER (WHERE counter0 = 0) AS dt_0,
+                COUNT(*) FILTER (WHERE counter1 = 0) AS dt_1,
+                COUNT(*) FILTER (WHERE counter2 = 0) AS dt_2,
+                COUNT(*) FILTER (WHERE counter3 = 0) AS dt_3,
+                COALESCE(SUM(counter0), 0) AS total_0,
+                COALESCE(SUM(counter1), 0) AS total_1,
+                COALESCE(SUM(counter2), 0) AS total_2,
+                COALESCE(SUM(counter3), 0) AS total_3,
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY counter0)
+                    FILTER (WHERE counter0 > 0) AS ideal_0,
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY counter1)
+                    FILTER (WHERE counter1 > 0) AS ideal_1,
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY counter2)
+                    FILTER (WHERE counter2 > 0) AS ideal_2,
+                PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY counter3)
+                    FILTER (WHERE counter3 > 0) AS ideal_3
+            FROM capacity_perminutev2
+            WHERE time >= $1::date AND time < $1::date + 1
+              AND time::time BETWEEN $2 AND $3
+            """,
+            target_date,
+            SHIFT_START,
+            SHIFT_END,
+        )
+
+        alarm_losses = await conn.fetch(
+            """
+            SELECT
+                severityclass,
+                COUNT(*) AS event_count
+            FROM plc_alarms
+            WHERE time >= $1::date AND time < $1::date + 1 AND incomingstate = 1
+            GROUP BY severityclass
+            """,
+            target_date,
+        )
+
+    total_min = int(stats["total_minutes"]) if stats["total_minutes"] else 0
+    if total_min == 0:
+        return {
+            "date": target_date.isoformat(),
+            "oee": None,
+            "availability": None,
+            "performance": None,
+            "quality": 100.0,
+            "per_line": [],
+            "losses": None,
+            "six_big_losses": [],
+        }
+
+    per_line = []
+    total_downtime = 0
+    total_speed_loss = 0
+    oee_values = []
+
+    for i in range(4):
+        dt = int(stats[f"dt_{i}"])
+        total = int(stats[f"total_{i}"])
+        ideal = float(stats[f"ideal_{i}"]) if stats[f"ideal_{i}"] else 0
+        uptime = total_min - dt
+
+        availability = uptime / total_min if total_min > 0 else 0
+        if uptime > 0 and ideal > 0:
+            performance = total / (uptime * ideal)
+            performance = min(performance, 1.0)
+        else:
+            performance = 0
+        quality = 1.0
+        oee = availability * performance * quality
+
+        speed_loss_min = round((1 - performance) * uptime) if uptime > 0 else 0
+        total_downtime += dt
+        total_speed_loss += speed_loss_min
+        oee_values.append(oee)
+
+        per_line.append({
+            "line": i,
+            "name": f"Lijn {i + 1}",
+            "oee": round(oee * 100, 1),
+            "availability": round(availability * 100, 1),
+            "performance": round(performance * 100, 1),
+            "quality": round(quality * 100, 1),
+            "downtime_minutes": dt,
+            "speed_loss_minutes": speed_loss_min,
+        })
+
+    avg_downtime = round(total_downtime / 4)
+    avg_speed_loss = round(total_speed_loss / 4)
+    avg_oee = round(sum(oee_values) / len(oee_values) * 100, 1) if oee_values else 0
+
+    avg_a = round(sum(l["availability"] for l in per_line) / 4, 1)
+    avg_p = round(sum(l["performance"] for l in per_line) / 4, 1)
+
+    alarm_map = {r["severityclass"]: int(r["event_count"]) for r in alarm_losses}
+    six_big = [
+        {"category": "Storingen", "type": "availability", "events": alarm_map.get("Error", 0)},
+        {"category": "Kleine stops", "type": "availability", "events": alarm_map.get("Warning", 0)},
+        {"category": "Snelheidsverlies", "type": "performance", "minutes": avg_speed_loss},
+        {"category": "Kwaliteitsverlies", "type": "quality", "minutes": 0},
+    ]
+
+    return {
+        "date": target_date.isoformat(),
+        "oee": avg_oee,
+        "availability": avg_a,
+        "performance": avg_p,
+        "quality": 100.0,
+        "per_line": per_line,
+        "losses": {
+            "planned_time": total_min,
+            "downtime_loss": avg_downtime,
+            "speed_loss": avg_speed_loss,
+            "quality_loss": 0,
+            "effective_time": total_min - avg_downtime - avg_speed_loss,
+        },
+        "six_big_losses": six_big,
     }

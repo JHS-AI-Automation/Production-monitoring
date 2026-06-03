@@ -1,6 +1,6 @@
+import asyncio
 import json
 import logging
-import os
 import re
 import time
 from collections import defaultdict
@@ -11,6 +11,9 @@ from openai import AsyncOpenAI
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
+from backend.config import Settings
+from backend.database import create_db_pool, get_connection
+
 router = APIRouter(prefix="/api/chat", tags=["chat"])
 logger = logging.getLogger(__name__)
 
@@ -19,10 +22,18 @@ _model: str = "anthropic/claude-sonnet-4"
 _chat_pool: asyncpg.Pool | None = None
 
 MAX_TOOL_LOOPS = 5
-RATE_LIMIT_MAX = 10
+# Rate limit is per client-IP. Let op: meerdere gebruikers achter hetzelfde
+# kantoor-NAT delen één IP en dus dit budget. 30/min laat ~5 gebruikers vlot chatten.
+RATE_LIMIT_MAX = 30
 RATE_LIMIT_WINDOW = 60
 
+# Maximaal aantal gelijktijdige LLM-conversaties. Beschermt de chat-pool (max 5) en
+# de OpenRouter-quota: een chat-call kan tot MAX_TOOL_LOOPS rondes + SQL duren.
+# Extra verzoeken wachten (async) i.p.v. de pool/quota te overspoelen.
+LLM_CONCURRENCY = 4
+
 _rate_limits: dict[str, list[float]] = defaultdict(list)
+_llm_semaphore = asyncio.Semaphore(LLM_CONCURRENCY)
 
 SCHEMA_CONTEXT = """Je bent een data-analist voor DGS, een vleesverwerkingsbedrijf in Haaksbergen.
 Je hebt read-only toegang tot een PostgreSQL database (db_dgs_01) met PLC-data van de productielijn.
@@ -111,35 +122,64 @@ def _sanitize_sql(sql: str) -> str:
 
 def _check_rate_limit(client_ip: str) -> None:
     now = time.monotonic()
-    window = _rate_limits[client_ip]
-    _rate_limits[client_ip] = [t for t in window if now - t < RATE_LIMIT_WINDOW]
+    # Verlopen tijdstempels van alle IP's opruimen, anders blijven inactieve IP's
+    # voor altijd in het geheugen staan (geheugenlek bij veel wisselende clients).
+    for ip in list(_rate_limits):
+        fresh = [t for t in _rate_limits[ip] if now - t < RATE_LIMIT_WINDOW]
+        if fresh:
+            _rate_limits[ip] = fresh
+        else:
+            del _rate_limits[ip]
+
     if len(_rate_limits[client_ip]) >= RATE_LIMIT_MAX:
         raise HTTPException(429, "Te veel verzoeken. Probeer het over een minuut opnieuw.")
     _rate_limits[client_ip].append(now)
 
 
-async def init_chat(api_key: str, model: str = "anthropic/claude-sonnet-4") -> None:
+def _resolve_tls_verify(settings: Settings):
+    """Bepaal de TLS-verify-waarde voor httpx: CA-bundle-pad, of bool.
+
+    Default veilig (True). Een CA-bundle is de juiste oplossing achter SSL-inspectie;
+    verify=False is een gedocumenteerd laatste redmiddel en logt een waarschuwing.
+    """
+    if settings.chat_ca_bundle:
+        return settings.chat_ca_bundle
+    if not settings.chat_tls_verify:
+        logger.warning(
+            "TLS-verificatie naar OpenRouter staat UIT (CHAT_TLS_VERIFY=false). "
+            "Alleen gebruiken achter een vertrouwde proxy; liever CHAT_CA_BUNDLE zetten."
+        )
+        return False
+    return True
+
+
+async def init_chat(settings: Settings) -> None:
     global _client, _model, _chat_pool
-    _model = model
-    if api_key:
+    _model = settings.chat_model
+    if settings.openrouter_api_key:
+        import httpx
         _client = AsyncOpenAI(
             base_url="https://openrouter.ai/api/v1",
-            api_key=api_key,
+            api_key=settings.openrouter_api_key,
             timeout=30.0,
+            http_client=httpx.AsyncClient(verify=_resolve_tls_verify(settings)),
         )
+
+    # Aparte read-only rol voor AI-gegenereerde SQL. Zonder CHAT_DB_USER valt de chat
+    # terug op de hoofd-pool (zie _get_chat_connection).
+    if not settings.chat_db_user:
+        logger.info("CHAT_DB_USER niet gezet, chat gebruikt de hoofd-pool")
+        _chat_pool = None
+        return
     try:
-        _chat_pool = await asyncpg.create_pool(
-            host=os.environ.get("DB_HOST", "localhost"),
-            port=int(os.environ.get("DB_PORT", "5432")),
-            database=os.environ.get("DB_NAME", "db_dgs_01"),
-            user="chat_readonly",
-            password="chat_readonly_2026",
+        _chat_pool = await create_db_pool(
+            settings,
+            user=settings.chat_db_user,
+            password=settings.chat_db_password,
             min_size=2,
             max_size=5,
-            command_timeout=25,
-            timeout=5,
         )
-        logger.info("Chat read-only pool created (user=chat_readonly)")
+        logger.info("Chat read-only pool created (user=%s)", settings.chat_db_user)
     except Exception:
         logger.warning("Chat read-only pool niet beschikbaar, fallback naar hoofdpool")
         _chat_pool = None
@@ -158,7 +198,6 @@ async def _get_chat_connection():
         async with _chat_pool.acquire() as conn:
             yield conn
     else:
-        from backend.database import get_connection
         async with get_connection() as conn:
             yield conn
 
@@ -191,9 +230,16 @@ async def chat(req: ChatRequest, request: Request):
     client_ip = request.client.host if request.client else "unknown"
     _check_rate_limit(client_ip)
 
+    # Begrens gelijktijdige LLM-conversaties; extra verzoeken wachten kort i.p.v.
+    # de chat-pool (max 5) en de OpenRouter-quota te overspoelen.
+    async with _llm_semaphore:
+        return await _run_conversation(req.message)
+
+
+async def _run_conversation(message: str) -> ChatResponse:
     messages = [
         {"role": "system", "content": SCHEMA_CONTEXT},
-        {"role": "user", "content": req.message},
+        {"role": "user", "content": message},
     ]
 
     response = await _client.chat.completions.create(

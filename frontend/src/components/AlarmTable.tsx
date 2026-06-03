@@ -1,10 +1,5 @@
 import type { TopAlarm } from "../api";
-
-const SEVERITY_STYLES: Record<string, string> = {
-  Error: "bg-red-100 text-red-700",
-  Warning: "bg-yellow-100 text-yellow-700",
-  Info: "bg-blue-100 text-blue-700",
-};
+import { SEVERITY_BADGE, SEVERITY_BADGE_FALLBACK } from "../lib/colors";
 
 interface AlarmTableProps {
   alarms: TopAlarm[];
@@ -45,7 +40,7 @@ export default function AlarmTable({ alarms, title = "Top alarmen" }: AlarmTable
               <td className="px-4 py-3 text-center">
                 <span
                   className={`inline-block px-2.5 py-0.5 rounded text-xs font-semibold ${
-                    SEVERITY_STYLES[alarm.severityclass] ?? "bg-gray-100 text-gray-600"
+                    SEVERITY_BADGE[alarm.severityclass] ?? SEVERITY_BADGE_FALLBACK
                   }`}
                 >
                   {alarm.severityclass}

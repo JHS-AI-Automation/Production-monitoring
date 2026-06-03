@@ -1,0 +1,188 @@
+{
+  "preset": "dgs-red",
+  "title": "DGS Optimax - Architectuuroverzicht",
+  "author": "Uland AI",
+  "output": "DGS-Optimax-architectuur.pptx",
+  "slides": [
+    {
+      "component": "title-dark",
+      "content": {
+        "label": "DGS Haaksbergen  |  Intern technisch",
+        "title": "DGS Optimax - Architectuur",
+        "subtitle": "Hoe het productie- en alarmdashboard is opgebouwd, en waarom",
+        "date": "Juni 2026"
+      }
+    },
+    {
+      "component": "agenda-blocks",
+      "content": {
+        "title": "Wat dit overzicht behandelt",
+        "items": [
+          { "number": 1, "title": "Context & architectuur", "description": "Waarom Optimax bestaat en hoe het in lagen is opgebouwd" },
+          { "number": 2, "title": "Backend & data", "description": "FastAPI, asyncpg-pool, datamodel en KPI-afleidingen" },
+          { "number": 3, "title": "AI-chat & frontend", "description": "Text-to-SQL met veiligheidslagen en de React-SPA" },
+          { "number": 4, "title": "Keuzes & aandachtspunten", "description": "Ontwerpbeslissingen en openstaande punten" }
+        ],
+        "footer": "Volledige detail incl. diagrammen: ARCHITECTURE.md"
+      }
+    },
+    {
+      "component": "content-cards-2col",
+      "content": {
+        "section_label": "Context & doel",
+        "title": "Van dagelijkse e-mail naar interactief dashboard",
+        "body_text": "",
+        "cards": [
+          { "title": "Probleem", "text": "Het alarm-report stuurde 1x per dag een statische e-mail. Niet doorzoekbaar, geen inzoom, geen vergelijking." },
+          { "title": "Oplossing", "text": "Zelfde PostgreSQL-bron, maar interactief: KPI's, OEE, pallets, trends en een AI-chat." },
+          { "title": "Productisering", "text": "White-label opgezet. Eén bestand (brand.js) rebrandt het hele dashboard." }
+        ],
+        "highlight": "De data zat er al. Optimax maakt het doorzoekbaar en visueel."
+      }
+    },
+    {
+      "component": "content-cards-3col",
+      "content": {
+        "section_label": "Architectuur in een oogopslag",
+        "title": "Single-origin, drie lagen",
+        "cards": [
+          { "number": 1, "title": "Frontend", "text": "React 19 SPA (Vite + TS + Tailwind), als statische build geserveerd door de backend." },
+          { "number": 2, "title": "Backend", "text": "FastAPI serveert API en SPA op dezelfde poort. Eén container, geen CORS." },
+          { "number": 3, "title": "Datalaag", "text": "asyncpg-pool naar PostgreSQL (db_dgs_01), read-only, via Ixon VPN." }
+        ],
+        "footer": "Upstream: PLC -> OPC UA -> Node-RED -> PostgreSQL (buiten deze repo)"
+      }
+    },
+    {
+      "component": "content-cards-3col",
+      "content": {
+        "section_label": "Technologie & keuzes",
+        "title": "Klein en mainstream, bewust",
+        "cards": [
+          { "number": 1, "title": "Backend", "text": "FastAPI + asyncpg + raw SQL. Geen ORM: KPI's zijn complexe aggregaties." },
+          { "number": 2, "title": "Frontend", "text": "React + Vite + recharts. Getypte API-client als expliciet contract." },
+          { "number": 3, "title": "Deployment", "text": "Multi-stage Docker (Node-build -> Python-runtime). Eén image." }
+        ],
+        "footer": "Model-agnostische AI via OpenRouter (OpenAI-SDK), model via CHAT_MODEL"
+      }
+    },
+    {
+      "component": "section-divider",
+      "content": {
+        "number": "01",
+        "title": "Backend & data",
+        "subtitle": "Hoe verzoeken worden afgehandeld en KPI's worden afgeleid"
+      }
+    },
+    {
+      "component": "content-bullets",
+      "content": {
+        "section_label": "Backend-opbouw",
+        "title": "Vier routers, gedeelde patronen",
+        "bullets": [
+          { "number": 1, "title": "Lifespan-beheer", "text": "Pool en chat-client openen bij start, netjes sluiten bij stop." },
+          { "number": 2, "title": "Routers per domein", "text": "alarms, production, pallets, chat. Elk een eigen prefix." },
+          { "number": 3, "title": "Gedeelde validatie", "text": "Datum default = gisteren. Toekomst en te lange periodes geweigerd." },
+          { "number": 4, "title": "Middleware & fallback", "text": "Request-timing, nette 500 zonder stacktrace-lek, SPA-fallback." }
+        ],
+        "footer": "Graceful degradation: app start ook als de DB (VPN) onbereikbaar is"
+      }
+    },
+    {
+      "component": "content-cards-2col",
+      "content": {
+        "section_label": "Datamodel",
+        "title": "Vier PLC-tabellen",
+        "body_text": "",
+        "cards": [
+          { "title": "plc_alarms", "text": "Alarm-events. incomingstate 1=geactiveerd, 0=verholpen. severityclass Error/Warning/Info." },
+          { "title": "capacity_perminutev2", "text": "Productietellers per minuut. counter0-3 = lijn 1-4 (1 en 4 overflow, 2 en 3 invoer)." },
+          { "title": "palletstatus", "text": "4 stations (6000-6015). Status 100=geen / 200=leeg / 300=klaar." },
+          { "title": "plc_alarms_mp1", "text": "Alarmen specifiek voor MP1 met extra detail (alarmid, eventid)." }
+        ],
+        "highlight": "Optimax definieert het schema niet, het is een pure read-consument."
+      }
+    },
+    {
+      "component": "content-cards-3col",
+      "content": {
+        "section_label": "KPI-afleidingen",
+        "title": "Van ruwe tellers naar inzicht",
+        "cards": [
+          { "number": 1, "title": "Alarmen", "text": "Geactiveerd/verholpen, top-N, open alarmen, MTTR via window-functie LEAD()." },
+          { "number": 2, "title": "Productie & OEE", "text": "Throughput, stilstand, piekuur, lijn-balans. OEE = A x P x Q + Six Big Losses." },
+          { "number": 3, "title": "Pallets", "text": "Bezettingsgraad per station (% tijd klaar/leeg/geen) per dag en per uur." }
+        ],
+        "footer": "Zware berekeningen in SQL (FILTER, window, percentielen), lichte transform in Python"
+      }
+    },
+    {
+      "component": "section-divider",
+      "content": {
+        "number": "02",
+        "title": "AI-chat & frontend",
+        "subtitle": "Natuurlijke taal naar SQL, en de interactieve UI"
+      }
+    },
+    {
+      "component": "data-columns",
+      "content": {
+        "section_label": "AI-chat (text-to-SQL)",
+        "title": "Vraag in gewoon Nederlands, antwoord uit de data",
+        "left_title": "Hoe het werkt",
+        "left_items": [
+          { "label": "Vraag", "text": "Gebruiker stelt vraag in de chat" },
+          { "label": "LLM", "text": "Model genereert een run_sql tool-call" },
+          { "label": "Uitvoer", "text": "Query gesanitized, read-only uitgevoerd, antwoord geformuleerd" }
+        ],
+        "right_title": "Veiligheidslagen",
+        "right_items": [
+          { "text": "Aparte read-only DB-user (chat_readonly)" },
+          { "text": "SELECT-only sanitizer + verboden-keyword-filter" },
+          { "text": "Geforceerde LIMIT, per-IP rate-limit, tool-loop-cap" }
+        ],
+        "highlight": "Model-agnostisch via OpenRouter. Geen API-key = chat uit, rest blijft werken."
+      }
+    },
+    {
+      "component": "content-cards-3col",
+      "content": {
+        "section_label": "Frontend",
+        "title": "SPA met robuuste data-fetching",
+        "cards": [
+          { "number": 1, "title": "SPA & routing", "text": "6 pagina's via react-router. Responsive sidebar, recharts-grafieken." },
+          { "number": 2, "title": "useApi-hook", "text": "Cache (60s), AbortController en 15s-timeout in één hook." },
+          { "number": 3, "title": "White-label", "text": "brand.js voedt zowel Tailwind (build) als React (runtime)." }
+        ],
+        "footer": "Maatwerk: geanimeerd SVG-fabrieksschema met overflow-herverdeling en inzoom per minuut"
+      }
+    },
+    {
+      "component": "content-cards-2col",
+      "content": {
+        "section_label": "Ontwerpbeslissingen",
+        "title": "De waarom achter de keuzes",
+        "body_text": "",
+        "cards": [
+          { "title": "Single-origin", "text": "API + SPA op één poort: simpele ops op een edge-device, geen CORS." },
+          { "title": "Raw SQL, geen ORM", "text": "KPI's zijn window-functies en percentielen, helderder en sneller in SQL." },
+          { "title": "Graceful degradation", "text": "DB achter VPN kan wegvallen, de app crasht niet maar meldt unhealthy." },
+          { "title": "White-label", "text": "Optimax als herbruikbaar product, rebranden is één bestand." }
+        ],
+        "highlight": "Bewust klein gehouden: geen over-engineering voor een read-heavy dashboard."
+      }
+    },
+    {
+      "component": "closing",
+      "content": {
+        "title": "Aandachtspunten & vervolg",
+        "actions": [
+          { "number": 1, "label": "Security", "text": "Hardcoded chat-credentials en TLS verify=False uit de code halen naar .env." },
+          { "number": 2, "label": "Robuustheid", "text": "Geen auth op het dashboard (acceptabel op geïsoleerd LAN) en geen tests." },
+          { "number": 3, "label": "Documentatie", "text": "Volledige architectuur incl. diagrammen staat in ARCHITECTURE.md." }
+        ],
+        "contact": "Uland AI  |  projects/dgs/alarm-dashboard/ARCHITECTURE.md"
+      }
+    }
+  ]
+}

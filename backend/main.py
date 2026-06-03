@@ -76,7 +76,7 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 async def lifespan(app: FastAPI):
     settings = Settings.from_env()
     await init_pool(settings)
-    await init_chat(settings.openrouter_api_key, settings.chat_model)
+    await init_chat(settings)
     logger.info("Optimax started on %s:%s", settings.app_host, settings.app_port)
     yield
     await close_chat_pool()
@@ -125,9 +125,16 @@ async def health():
 if STATIC_DIR.is_dir():
     app.mount("/assets", StaticFiles(directory=STATIC_DIR / "assets"), name="assets")
 
+    @app.get("/")
+    async def serve_index():
+        return FileResponse(STATIC_DIR / "index.html")
+
     @app.get("/{path:path}")
     async def serve_frontend(path: str):
-        file_path = STATIC_DIR / path
-        if file_path.is_file():
-            return FileResponse(file_path)
+        # Resolve en controleer dat het pad binnen STATIC_DIR blijft, zodat een
+        # verzoek als /../../etc/passwd geen bestanden buiten de map kan lekken.
+        requested = (STATIC_DIR / path).resolve()
+        if requested.is_file() and requested.is_relative_to(STATIC_DIR.resolve()):
+            return FileResponse(requested)
+        # Onbekend pad -> SPA-fallback (client-side routing handelt het af).
         return FileResponse(STATIC_DIR / "index.html")

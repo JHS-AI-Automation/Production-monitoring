@@ -12,6 +12,11 @@ Connection string staat in `.env` als `DGS_DB_CONNECTION_STRING`.
 
 ## Database Schema (db_dgs_01)
 
+**Partitionering:** productie (en de lokale prod-spiegel) gebruikt RANGE-partities **per dag**
+op `time` (`plc_alarms_YYYYMMDD`, `capacity_perminutev2_YYYYMMDD`, etc.). Filter daarom altijd
+sargable: `WHERE time >= $1::date AND time < $1::date + 1` (NIET `WHERE time::date = $1`, dat
+breekt partition pruning en index-gebruik). Index op `time` staat op elke partitioned parent.
+
 ### Bevestigde tabellen
 
 **plc_alarms** (hoofdtabel, gebruikt door de backend API)
@@ -30,10 +35,17 @@ Connection string staat in `.env` als `DGS_DB_CONNECTION_STRING`.
 
 **capacity_perminutev2** (productie-tellers per minuut)
 - `time` (timestamp): meetmoment
-- `counter0` (int): productieteller Lijn 1 (overflow)
-- `counter1` (int): productieteller Lijn 2 (invoer)
-- `counter2` (int): productieteller Lijn 3 (invoer)
-- `counter3` (int): productieteller Lijn 4 (overflow)
+- `counter0` (int): productieteller Lijn 1 (robot legt af)
+- `counter1` (int): productieteller Lijn 2 (overflow, rest na robot)
+- `counter2` (int): productieteller Lijn 3 (overflow, rest na robot)
+- `counter3` (int): productieteller Lijn 4 (robot legt af)
+
+  Model: lijn 1 en 4 tellen wat de robot aflegt; lijn 2 en 3 zijn de overflow die daarna overblijft.
+
+  **Open punt:** achter de overflow zit nog een teller (na lijn 2/3) die nog uit het DB-schema
+  bepaald moet worden. In het ProductionFlowDiagram staat hiervoor een gestippeld "n.t.b."-blok.
+  Kandidaat om te onderzoeken: de tabel `capacity_detected` (bestaat in db_dgs_01, gepartitioneerd
+  per dag, nog niet gebruikt door de backend).
 
 **palletstatus** (palletposities op 4 stations)
 - `time` (timestamp): meetmoment
@@ -67,7 +79,33 @@ Connection string staat in `.env` als `DGS_DB_CONNECTION_STRING`.
 - PLC host: OPC UA server, data via Node-RED naar PostgreSQL
 - Remote toegang: Ixon VPN
 
+## Lokale ontwikkeling (nep-DB in Docker)
+
+Twee opties, beide zonder VPN:
+
+- **Prod-spiegel (gepartitioneerd), poort 5434, container `dgs-db-local`** — meest representatief.
+  Seeden: `python scripts/seed_partitioned.py --days 14 --clear > seed.sql` daarna
+  `docker exec -i dgs-db-local psql -U dgs -d db_dgs_01 < seed.sql`.
+- **Vlakke dev-DB, poort 5433** (`docker-compose.dev.yml`) — `python scripts/generate_dummy_data.py`.
+
+Beide schrijven palletstatus als 100/200/300 (matcht de queries). `.env` wijst lokaal naar de
+gekozen poort (auth in de container is `trust`, dus wachtwoord-waarde maakt lokaal niet uit).
+
+**Chat read-only rol** (nodig voor de chat, los van de hoofd-pool):
+
+```sql
+CREATE ROLE chat_readonly LOGIN PASSWORD '...';
+GRANT CONNECT ON DATABASE db_dgs_01 TO chat_readonly;
+GRANT USAGE ON SCHEMA public TO chat_readonly;
+GRANT SELECT ON ALL TABLES IN SCHEMA public TO chat_readonly;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO chat_readonly;
+```
+
+Zet daarna `CHAT_DB_USER` / `CHAT_DB_PASSWORD` in `.env`. Load-test: `python scripts/load_test.py --users 5`.
+
 ## Security
 
 - MCP server: alleen SELECT-queries. Geen INSERT, UPDATE, DELETE, DROP.
 - Database user: read-only account (credentials in `.env`, niet in repo)
+- Chat: aparte read-only rol via `CHAT_DB_USER`/`CHAT_DB_PASSWORD` (niet hardcoded), SQL-sanitizer (alleen SELECT + LIMIT), per-IP rate-limit, concurrency-semafoor.
+- TLS naar OpenRouter: veilig by default; `CHAT_CA_BUNDLE` of (laatste redmiddel) `CHAT_TLS_VERIFY=false`.

@@ -22,12 +22,7 @@ import DatePicker from "../components/DatePicker";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
 import LoadingSpinner from "../components/LoadingSpinner";
-
-function yesterday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
+import { yesterday } from "../lib/date";
 
 const STATION_COLORS: Record<string, string> = {
   "6000": "#6366f1",

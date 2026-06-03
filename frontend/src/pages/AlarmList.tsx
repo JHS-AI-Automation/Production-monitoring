@@ -6,18 +6,9 @@ import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
 import LoadingSpinner from "../components/LoadingSpinner";
 import { AlertTriangle, ChevronLeft, ChevronRight, Search } from "lucide-react";
-
-function yesterday(): string {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
-
-const SEVERITY_STYLES: Record<string, string> = {
-  Error: "bg-red-100 text-red-700",
-  Warning: "bg-yellow-100 text-yellow-700",
-  Info: "bg-blue-100 text-blue-700",
-};
+import { yesterday } from "../lib/date";
+import { formatTime } from "../lib/format";
+import { SEVERITY_BADGE, SEVERITY_BADGE_FALLBACK } from "../lib/colors";
 
 const STATE_STYLES: Record<string, string> = {
   triggered: "bg-red-50 text-red-600",
@@ -57,13 +48,6 @@ export default function AlarmList() {
   const pages = res?.pages ?? 1;
   const clampedPage = Math.min(page, pages);
   const open = openAlarms.data ?? [];
-
-  const fmtTime = (iso: string) =>
-    new Date(iso).toLocaleTimeString("nl-NL", {
-      hour: "2-digit",
-      minute: "2-digit",
-      second: "2-digit",
-    });
 
   return (
     <div className="space-y-6">
@@ -117,16 +101,13 @@ export default function AlarmList() {
                 <div className="flex items-center gap-2 shrink-0 ml-3">
                   <span
                     className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                      SEVERITY_STYLES[a.severityclass] ?? "bg-gray-100 text-gray-600"
+                      SEVERITY_BADGE[a.severityclass] ?? SEVERITY_BADGE_FALLBACK
                     }`}
                   >
                     {a.severityclass}
                   </span>
                   <span className="text-xs text-gray-400 font-mono">
-                    {new Date(a.last_seen).toLocaleTimeString("nl-NL", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {formatTime(a.last_seen, { seconds: false })}
                   </span>
                 </div>
               </div>
@@ -168,7 +149,7 @@ export default function AlarmList() {
               items.map((item, i) => (
                 <tr key={i} className={i % 2 === 0 ? "bg-gray-50/50" : "bg-white"}>
                   <td className="px-5 py-2.5 text-sm text-gray-600 font-mono">
-                    {fmtTime(item.time)}
+                    {formatTime(item.time)}
                   </td>
                   <td className="px-5 py-2.5 text-sm text-gray-700">
                     {item.alarmmessage}
@@ -176,7 +157,7 @@ export default function AlarmList() {
                   <td className="px-4 py-2.5 text-center">
                     <span
                       className={`inline-block px-2.5 py-0.5 rounded text-xs font-semibold ${
-                        SEVERITY_STYLES[item.severityclass] ?? "bg-gray-100 text-gray-600"
+                        SEVERITY_BADGE[item.severityclass] ?? SEVERITY_BADGE_FALLBACK
                       }`}
                     >
                       {item.severityclass}
@@ -212,12 +193,12 @@ export default function AlarmList() {
             >
               <div className="flex items-center justify-between">
                 <span className="text-xs font-mono text-gray-500">
-                  {fmtTime(item.time)}
+                  {formatTime(item.time)}
                 </span>
                 <div className="flex gap-1.5">
                   <span
                     className={`px-2 py-0.5 rounded text-xs font-semibold ${
-                      SEVERITY_STYLES[item.severityclass] ?? "bg-gray-100 text-gray-600"
+                      SEVERITY_BADGE[item.severityclass] ?? SEVERITY_BADGE_FALLBACK
                     }`}
                   >
                     {item.severityclass}

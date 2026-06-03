@@ -1,4 +1,4 @@
-import brand from "./src/brand.js";
+import brand from "./src/brand";
 
 /** @type {import('tailwindcss').Config} */
 export default {

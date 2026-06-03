@@ -32,6 +32,10 @@ except ImportError:
 SHIFT_START_HOUR = 5
 SHIFT_END_HOUR = 23
 
+# Palletstatus-codes zoals de backend ze verwacht (zie pallets.py):
+# 100 = geen pallet aanwezig, 200 = pallet leeg, 300 = pallet klaar.
+PALLET_STATUSES = [100, 200, 300]
+
 ALARM_MESSAGES = [
     ("Robot arm positie fout", "Error"),
     ("Transportband stilstand", "Error"),
@@ -98,7 +102,9 @@ def generate_alarms_for_day(day: datetime.date) -> list[tuple]:
 def generate_capacity_for_day(day: datetime.date) -> list[tuple]:
     """Genereer productietellers per minuut voor 1 dag (shift 05:00-23:00)."""
     rows = []
-    base_rates = [8, 22, 16, 12]
+    # Lijn 1 en 4 = robot-output (hoog), lijn 2 en 3 = overflow/rest (laag),
+    # zodat het overflow-aandeel rond ~15% ligt (zichtbare groen/amber/rood-spreiding).
+    base_rates = [26, 5, 4, 20]
 
     has_downtime = [random.random() < 0.15 for _ in range(4)]
     downtime_start = [random.randint(SHIFT_START_HOUR + 1, SHIFT_END_HOUR - 3) for _ in range(4)]
@@ -142,9 +148,15 @@ def generate_capacity_for_day(day: datetime.date) -> list[tuple]:
 
 
 def generate_pallets_for_day(day: datetime.date) -> list[tuple]:
-    """Genereer palletstatus-metingen per ~1 minuut voor 1 dag."""
+    """Genereer palletstatus-metingen per ~1 minuut voor 1 dag.
+
+    Statuscodes moeten matchen met wat de backend-queries verwachten
+    (pallets.py filtert op 100/200/300): 100 = geen pallet, 200 = leeg,
+    300 = klaar. Eerder werd hier 0/1/2 geschreven, waardoor de
+    Pallets-pagina overal 0% toonde.
+    """
     rows = []
-    current_status = [random.choice([0, 1, 2]) for _ in range(4)]
+    current_status = [random.choice(PALLET_STATUSES) for _ in range(4)]
 
     for hour in range(SHIFT_START_HOUR, SHIFT_END_HOUR):
         for minute in range(60):
@@ -153,7 +165,7 @@ def generate_pallets_for_day(day: datetime.date) -> list[tuple]:
 
             for i in range(4):
                 if random.random() < 0.08:
-                    current_status[i] = random.choice([0, 1, 2])
+                    current_status[i] = random.choice(PALLET_STATUSES)
 
             rows.append((t, *current_status[:]))
 
