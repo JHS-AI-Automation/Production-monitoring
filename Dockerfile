@@ -16,6 +16,11 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY --from=frontend-build /app/static ./static/
 
+# Git-commit meegeven aan de build zodat /api/version de exacte deploy toont:
+#   docker build --build-arg APP_COMMIT=$(git rev-parse --short HEAD) .
+ARG APP_COMMIT=unknown
+ENV APP_COMMIT=${APP_COMMIT}
+
 EXPOSE 8080
 
 CMD ["uvicorn", "backend.main:app", "--host", "0.0.0.0", "--port", "8080"]

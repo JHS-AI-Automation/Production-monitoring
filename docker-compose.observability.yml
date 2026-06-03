@@ -1,0 +1,50 @@
+# Optionele observability-stack voor DGS Optimax: Prometheus (metrics), Loki + Promtail (logs),
+# Grafana (dashboards). Los van de app-stack; draai naast de app.
+#
+#   docker compose -f docker-compose.observability.yml up -d
+#   Grafana:    http://localhost:3000  (Prometheus + Loki staan al ingericht)
+#   Prometheus: http://localhost:9090
+#
+# De app exposeert /api/metrics/prometheus en logt JSON naar ./logs (door Promtail gelezen).
+# NB: deze stack is meegeleverd en geconfigureerd, maar niet meegetest in deze repo-build.
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    ports:
+      - "9090:9090"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:latest
+    ports:
+      - "3100:3100"
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:latest
+    command: -config.file=/etc/promtail/config.yml
+    volumes:
+      - ./observability/promtail-config.yml:/etc/promtail/config.yml:ro
+      - ./logs:/var/log/optimax:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+    volumes:
+      - ./observability/grafana-datasources.yml:/etc/grafana/provisioning/datasources/ds.yml:ro
+    depends_on:
+      - prometheus
+      - loki
+    restart: unless-stopped

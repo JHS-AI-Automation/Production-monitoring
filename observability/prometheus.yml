@@ -1,0 +1,16 @@
+# Prometheus scrape-config voor DGS Optimax.
+# De app exposeert metrics op /api/metrics/prometheus (geen extra dependency in de app).
+global:
+  scrape_interval: 30s
+
+scrape_configs:
+  - job_name: optimax
+    metrics_path: /api/metrics/prometheus
+    static_configs:
+      # Docker Desktop: host.docker.internal bereikt de app op de host (poort 8080).
+      # Op Linux: zet de app + deze stack op hetzelfde Docker-netwerk en gebruik "dashboard:8080".
+      - targets: ["host.docker.internal:8080"]
+    # Als DASHBOARD_AUTH_USER/PASSWORD aanstaan, ontkomment en vul in:
+    # basic_auth:
+    #   username: "<DASHBOARD_AUTH_USER>"
+    #   password: "<DASHBOARD_AUTH_PASSWORD>"
