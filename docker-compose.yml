@@ -27,8 +27,10 @@ services:
       - "${APP_PORT:-8080}:8080"
     env_file: .env
     environment:
-      DB_HOST: db
-      DB_PORT: "5432"
+      # Default = de meegeleverde db-service. Zet DB_HOST/DB_PORT in .env om naar de
+      # echte DGS-database te wijzen (dan is de db-service hieronder niet nodig).
+      DB_HOST: ${DB_HOST:-db}
+      DB_PORT: ${DB_PORT:-5432}
       LOG_FORMAT: json
       LOG_LEVEL: INFO
     volumes:

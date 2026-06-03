@@ -1,0 +1,32 @@
+# Houd de build-context schoon en architectuur-onafhankelijk.
+# Cruciaal: host-node_modules/.venv mogen NIET in het image belanden, anders
+# overschrijven Windows/x64-binaries de verse ARM64-install -> build breekt.
+
+**/node_modules
+.venv/
+venv/
+static/
+**/dist/
+.git/
+.github/
+logs/
+*.log
+
+# Secrets en lokale config nooit in het image bakken
+.env
+.env.*
+
+# Python-cruft
+**/__pycache__/
+*.pyc
+.pytest_cache/
+
+# Frontend/test-cruft
+*.tsbuildinfo
+.vite/
+
+# Niet nodig in het runtime-image
+docs/
+observability/
+*.md
+docker-compose*.yml
