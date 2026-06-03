@@ -103,6 +103,8 @@ Zie `.env.example`. Belangrijkste:
 |---|---|
 | `DB_HOST` / `DB_PORT` / `DB_NAME` / `DB_USER` / `DB_PASSWORD` | Hoofd-databaseconnectie |
 | `APP_PORT` / `APP_HOST` | Waar de app luistert |
+| `DASHBOARD_AUTH_USER` / `DASHBOARD_AUTH_PASSWORD` | Optionele HTTP Basic Auth (beide leeg = uit) |
+| `APP_COMMIT` | Git-commit voor `/api/version` (via `docker build --build-arg`) |
 | `LOG_FORMAT` (`text`/`json`) / `LOG_LEVEL` | Logging |
 | `OPENROUTER_API_KEY` | Sleutel voor de chat-functie (leeg = chat uit) |
 | `CHAT_MODEL` | LLM-model via OpenRouter (default `anthropic/claude-sonnet-4`) |
@@ -151,7 +153,27 @@ Zie `.env.example`. Belangrijkste:
 | GET | `/api/pallets/summary?date=...` | Bezettingsgraad per palletstation |
 | GET | `/api/pallets/hourly?date=...` | Bezettingsgraad (% klaar) per uur |
 | POST | `/api/chat` `{"message": "..."}` | NL-vraag over de data (read-only SQL via LLM) |
-| GET | `/api/health` | Gezondheidscheck (database connectiviteit) |
+| GET | `/api/health` | Gezondheidscheck (DB, versie, uptime, pool-stats) |
+| GET | `/api/version` | Welke build draait (naam, versie, commit, starttijd) |
+| GET | `/api/metrics` | In-process metrics (requests/fouten/latency per endpoint) als JSON |
+| GET | `/api/metrics/prometheus` | Zelfde metrics in Prometheus-formaat (scrape-baar) |
+| POST | `/api/client-log` | Frontend-foutrapportage (door de ErrorBoundary gebruikt) |
+
+## Tests
+
+```bash
+pip install -r backend/requirements-dev.txt
+pytest          # unit + API-tests; DB-tests worden overgeslagen als de nep-DB niet draait
+```
+
+## Observability & operatie
+
+- **Logs:** JSON met een `request_id` per verzoek (ook in de `X-Request-ID` response-header) -
+  zie [RUNBOOK.md](RUNBOOK.md) voor diagnose en veelvoorkomende problemen.
+- **Metrics/health/versie:** de endpoints hierboven; `/api/health` voedt de Docker-healthcheck.
+- **Alerting:** `scripts/healthcheck_alert.py` (cron, webhook) meldt als de app ongezond is.
+- **Optionele stack:** `docker compose -f docker-compose.observability.yml up -d` (Prometheus +
+  Loki + Promtail + Grafana, kant-en-klaar geconfigureerd).
 
 ## Troubleshooting
 

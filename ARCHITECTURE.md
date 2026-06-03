@@ -467,15 +467,25 @@ Het bestand bevat een uitgecommentarieerd "demo-profiel" (generiek blauw), zodat
 ### Security
 
 - **Read-only by design:** de app doet uitsluitend SELECT. De chat draait bovendien onder een aparte read-only DB-user met een gestapelde SQL-sanitizer (zie [sectie 8](#8-ai-chat-module-text-to-sql)).
+- **Optionele HTTP Basic Auth:** env-gated (`DASHBOARD_AUTH_USER`/`PASSWORD`), default uit. Aan = alle routes achter login behalve `/api/health`. Minimaal; voor productie SSO/proxy-auth.
 - **Geen secrets in de repo:** alle credentials komen uit `.env` (in `.gitignore`). De template [.env.example](.env.example) staat wel in de repo.
 - **Single-origin:** API en SPA op dezelfde origin betekent geen CORS-configuratie en geen cross-site-vraagstukken.
 - **Foutafhandeling lekt niets:** de globale middleware geeft een generieke 500 naar de client en houdt de traceback in de logs.
 
 ### Observability
 
-- **Logging:** configureerbaar via `LOG_FORMAT` (text voor terminal, json voor Docker/Loki) en `LOG_LEVEL`. Console-handler plus een `RotatingFileHandler` (`logs/dashboard.log`, 5 MB × 5 = max 25 MB).
-- **Request-timing:** elke request wordt gemeten; trage of falende requests vallen op in de logs.
-- **Health:** `/api/health` voedt de Docker-healthcheck en externe monitoring.
+- **Logging:** JSON met een `request_id` per verzoek (zie `backend/observability.py`),
+  configureerbaar via `LOG_FORMAT` (text/json) en `LOG_LEVEL`. Console + `RotatingFileHandler`
+  (`logs/dashboard.log`, 5 MB × 5).
+- **Request-correlatie:** elk verzoek krijgt een `request_id` in de logs, in de `X-Request-ID`
+  response-header en in de body van een 500. Support traceert daarmee een melding terug.
+- **Health/versie:** `/api/health` (DB, versie, uptime, pool-stats) voedt de Docker-healthcheck;
+  `/api/version` toont de draaiende build (commit via `APP_COMMIT`).
+- **Metrics:** `/api/metrics` (JSON) en `/api/metrics/prometheus` (scrape-baar) uit een lichte
+  in-process teller; chat-conversaties loggen tokenverbruik.
+- **Frontend:** een ErrorBoundary voorkomt witte schermen en rapporteert render-fouten naar
+  `/api/client-log` (verschijnen in de server-logs).
+- **Optioneel:** `docker-compose.observability.yml` (Prometheus + Loki + Promtail + Grafana).
 
 ### Performance
 
@@ -538,12 +548,19 @@ Beknopte ADR-stijl: de beslissing, en waarom.
 - ~~**Niet-deterministische top-alarmen.**~~ Tiebreaker `ORDER BY trigger_count DESC, alarmmessage` toegevoegd.
 - ~~**Dummy-data palletstatus.**~~ Schreef `0/1/2`, queries verwachten `100/200/300`; gecorrigeerd in de generator.
 
+**Opgelost in de observability/supportability-ronde:**
+
+- ~~**Geen authenticatie.**~~ Optionele HTTP Basic Auth toegevoegd (env-gated, default uit). Voor productie nog naar SSO/proxy-auth.
+- ~~**Geen geautomatiseerde tests.**~~ pytest-suite toegevoegd (`backend/tests/`): units + API + observability + auth. Frontend-tests (vitest) nog te doen.
+- ~~**Geen observability/runbook.**~~ Request-id-correlatie, metrics, version, alerting-script, observability-stack en [RUNBOOK.md](RUNBOOK.md) toegevoegd.
+
 **Nog open (bewust benoemd):**
 
-- **Geen authenticatie:** dashboard en `/api/*` zijn open voor iedereen op het netwerk. Acceptabel op een geïsoleerd fabrieks-LAN, maar bewust te benoemen.
-- **Geen geautomatiseerde tests:** noch backend noch frontend heeft tests. De refactor is geverifieerd via output-pariteit (golden snapshot) en een load-test, maar een pytest-smoke-suite ontbreekt nog.
-- **Gesquashte git-historie:** alles in één commit (2026-05-28), geen incrementele geschiedenis.
-- **In-memory cache/rate-limit zijn per-proces:** bij meerdere uvicorn-workers niet gedeeld; voor grote schaal naar Redis (zie [sectie 10](#10-cross-cutting-concerns)).
+- **Auth productie-waardig maken:** Basic Auth is een minimale gate; SSO of reverse-proxy-auth is de echte oplossing.
+- **Frontend-tests:** backend heeft pytest; frontend nog geen vitest/component-tests.
+- **Tracing (OpenTelemetry):** bewust uitgesteld; het `request_id` dekt correlatie voor één service, full tracing is voor een multi-service-landschap.
+- **Redis voor cache/rate-limit:** alleen nodig bij multi-worker/multi-instance schaal; in-process is prima voor de huidige load.
+- **Gesquashte git-historie:** alles begon in één commit (2026-05-28).
 
 ---
 
