@@ -45,6 +45,7 @@ docker buildx build --platform linux/arm64/v8 \
   --build-arg LOG_FORMAT="${LOG_FORMAT:-json}" \
   --build-arg LOG_LEVEL="${LOG_LEVEL:-INFO}" \
   --build-arg APP_PORT="$APP_PORT" \
+  --build-arg INSTALL_CORP_CA="${INSTALL_CORP_CA:-0}" \
   --build-arg APP_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" \
   -t "$IMAGE" --push .
 

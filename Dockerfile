@@ -11,7 +11,19 @@ FROM python:3.12-slim
 WORKDIR /app
 
 COPY backend/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+
+# Optionele bedrijfs-CA voor builds achter SSL-inspectie (default UIT).
+# Leg het root-certificaat als .crt in certs/ en bouw met --build-arg INSTALL_CORP_CA=1.
+# Zonder dat (certs/ bevat alleen .gitkeep) verandert er niets aan de normale build.
+ARG INSTALL_CORP_CA=0
+COPY certs/ /usr/local/share/ca-certificates/corp/
+RUN if [ "$INSTALL_CORP_CA" = "1" ]; then \
+        apt-get update && apt-get install -y --no-install-recommends ca-certificates && \
+        update-ca-certificates && rm -rf /var/lib/apt/lists/* && \
+        pip install --no-cache-dir --cert /etc/ssl/certs/ca-certificates.crt -r requirements.txt; \
+    else \
+        pip install --no-cache-dir -r requirements.txt; \
+    fi
 
 COPY backend/ ./backend/
 COPY --from=frontend-build /app/static ./static/

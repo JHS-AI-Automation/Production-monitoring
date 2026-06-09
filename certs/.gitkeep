@@ -1,0 +1,2 @@
+# Leg hier het bedrijfs-root-CA (.crt/.pem) neer om achter SSL-inspectie te bouwen.
+# Bouw dan met INSTALL_CORP_CA=1. Echte .crt-bestanden worden door .gitignore genegeerd.

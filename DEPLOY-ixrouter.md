@@ -3,6 +3,35 @@
 Stap-voor-stap, in gewone taal. De IXrouter5 is een ARM64 edge-router met een eigen
 Docker-"app-winkel" (registry) en een beheerpagina in de browser.
 
+> **Bevestigd (IXON developer-docs, juni 2026):** de SecureEdge Pro host een insecure
+> Docker-registry op **poort 5000**, default device-IP **`192.168.140.1`**. Je pusht je
+> ARM64-image daarheen, en maakt er een container van via de beheerpagina of de Docker-API
+> (`POST /api/v1/docker/containers`, starten via `/api/v1/docker/containers/<naam>/start`),
+> op het `machine-builder`-netwerk. De registry-aanpak in deze gids is dus de officiele methode.
+> Bron: developer.ixon.cloud/docs/secure-edge-api-docker.
+
+## Wat moet er nog gebeuren (status 2026-06-09)
+
+De code-kant is klaar; dit zijn de openstaande stappen voordat Optimax op de logger draait:
+
+- [ ] **Bedrijfs-root-CA** in `certs/` leggen + `INSTALL_CORP_CA=1` in `.ixrouter.env`
+      (nodig om op het DGS-netwerk te bouwen achter SSL-inspectie). Het root-certificaat is
+      openbaar; vraag IT om "de root-CA van onze SSL-inspectie als .crt/.pem", of exporteer
+      hem via de browser (slotje op pypi.org -> certificeringspad -> root -> Base-64 exporteren).
+- [x] **Router-IP bevestigd: `192.168.23.254`** (registry `GET /v2/` -> `{}`). Staat ingevuld in
+      `.ixrouter.env` en `buildkitd-ixrouter5.toml`. (Niet `192.168.140.1`, dat was de IXON-default.)
+- [ ] **Docker `insecure-registries`** op `<router-ip>:5000` zetten (Docker Desktop -> Settings ->
+      Docker Engine -> toevoegen -> Apply & Restart).
+- [ ] **IXON-VPN actief en routerend** naar de SecureEdge (registry :5000) en de DB
+      (`192.168.23.254:5432`). Snelle test: `curl http://<router-ip>:5000/v2/` (verwacht 200 of 401).
+- [ ] **Bouwen + pushen:** `INSTALL_CORP_CA=1 ./scripts/build-ixrouter.sh` (de `INSTALL_CORP_CA` alleen als de CA er is).
+- [ ] **Container aanmaken** in de beheerpagina (of via de API): image `optimax`, poort **9000**,
+      named volume `optimax-logs` -> `/app/logs`, netwerk `machine-builder`.
+- [ ] **Verifieren:** `curl http://<router-ip>:9000/api/health` -> `healthy`; daarna de UI openen op `http://<router-ip>:9000`.
+
+Al klaar: app + config-baked Dockerfile, build/push-script, healthcheck, CA-mechanisme (default uit),
+en `.ixrouter.env` met DB- en OpenRouter-waarden (gitignored, niet gedeeld).
+
 ## Hoe het werkt (kort)
 
 1. Je bouwt op je eigen pc een app-pakket (Docker-image) en **upload** dat naar de winkel van

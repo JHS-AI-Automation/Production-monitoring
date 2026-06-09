@@ -22,5 +22,9 @@ frontend/tsconfig.tsbuildinfo
 *.tar
 *.tar.gz
 
+# Bedrijfs-CA voor builds achter SSL-inspectie (lokaal houden, niet delen)
+certs/*
+!certs/.gitkeep
+
 # IXrouter5 build-config met secrets (alleen het .example-bestand wordt gecommit)
 .ixrouter.env
