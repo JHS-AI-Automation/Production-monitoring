@@ -48,5 +48,5 @@ class Settings:
             chat_db_password=os.environ.get("CHAT_DB_PASSWORD", ""),
             chat_tls_verify=os.environ.get("CHAT_TLS_VERIFY", "true").lower() != "false",
             chat_ca_bundle=os.environ.get("CHAT_CA_BUNDLE", ""),
-            chat_daily_token_budget=int(os.environ.get("CHAT_DAILY_TOKEN_BUDGET", "300000")),
+            chat_daily_token_budget=int(os.environ.get("CHAT_DAILY_TOKEN_BUDGET") or "300000"),
         )

@@ -40,6 +40,7 @@ docker buildx build --platform linux/arm64/v8 \
   --build-arg CHAT_DB_PASSWORD="${CHAT_DB_PASSWORD:-}" \
   --build-arg CHAT_TLS_VERIFY="${CHAT_TLS_VERIFY:-true}" \
   --build-arg CHAT_CA_BUNDLE="${CHAT_CA_BUNDLE:-}" \
+  --build-arg CHAT_DAILY_TOKEN_BUDGET="${CHAT_DAILY_TOKEN_BUDGET:-300000}" \
   --build-arg DASHBOARD_AUTH_USER="${DASHBOARD_AUTH_USER:-}" \
   --build-arg DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-}" \
   --build-arg LOG_FORMAT="${LOG_FORMAT:-json}" \
