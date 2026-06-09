@@ -5,11 +5,17 @@ DB-afhankelijke tests verwachten de nep-DB (zie README); zijn die niet bereikbaa
 dan worden ze netjes overgeslagen i.p.v. te falen.
 """
 
+import os
 import sys
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
+
+# De testsuite draait in een afgeschermde context: sta expliciet toe dat de app
+# zonder dashboard-authenticatie start (anders weigert lifespan te starten). MOET
+# vóór de import van backend.main, want de vlag wordt bij import gelezen.
+os.environ.setdefault("ALLOW_NO_AUTH", "1")
 
 # Repo-root op het pad zodat 'backend' importeerbaar is, ongeacht waar pytest draait.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))

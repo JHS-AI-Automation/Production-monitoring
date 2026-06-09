@@ -23,6 +23,8 @@ class Settings:
     # verificatie worden uitgezet via CHAT_TLS_VERIFY=false.
     chat_tls_verify: bool
     chat_ca_bundle: str
+    # Dagelijks token-budget voor de chat (kosten-/misbruik-rem). 0 = onbeperkt.
+    chat_daily_token_budget: int
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -46,4 +48,5 @@ class Settings:
             chat_db_password=os.environ.get("CHAT_DB_PASSWORD", ""),
             chat_tls_verify=os.environ.get("CHAT_TLS_VERIFY", "true").lower() != "false",
             chat_ca_bundle=os.environ.get("CHAT_CA_BUNDLE", ""),
+            chat_daily_token_budget=int(os.environ.get("CHAT_DAILY_TOKEN_BUDGET", "300000")),
         )

@@ -75,6 +75,14 @@ ARG APP_PORT=8080
 ENV APP_PORT=${APP_PORT}
 EXPOSE ${APP_PORT}
 
+# Draai als non-root (CIS Docker 4.1). De app is een pure read-consumer en heeft geen
+# root nodig; zo blijft de schade beperkt als de app of een dependency ooit gecompromitteerd raakt.
+# /app/logs moet schrijfbaar zijn voor deze user (named volume erft de eigenaar bij eerste mount).
+RUN useradd --system --uid 10001 --no-create-home appuser \
+    && mkdir -p /app/logs \
+    && chown -R appuser:appuser /app
+USER appuser
+
 # Healthcheck zodat de Docker-/router-UI de status (healthy/unhealthy) toont.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://localhost:%s/api/health' % os.environ.get('APP_PORT','8080'))" || exit 1

@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 import re
 import time
 from collections import defaultdict
@@ -20,6 +21,14 @@ logger = logging.getLogger(__name__)
 _client: AsyncOpenAI | None = None
 _model: str = "anthropic/claude-sonnet-4"
 _chat_pool: asyncpg.Pool | None = None
+# Mag de chat terugvallen op de hoofd-pool als er geen aparte read-only rol is?
+# Alleen in een afgeschermde interne omgeving (ALLOW_NO_AUTH=1); in productie nooit.
+_allow_main_pool_fallback: bool = False
+
+# Dagelijks token-budget (SEC-18): rem op kosten/misbruik. 0 = onbeperkt.
+_daily_token_budget: int = 0
+_tokens_today: int = 0
+_token_day: str = ""
 
 MAX_TOOL_LOOPS = 5
 # Rate limit is per client-IP. Let op: meerdere gebruikers achter hetzelfde
@@ -136,6 +145,27 @@ def _check_rate_limit(client_ip: str) -> None:
     _rate_limits[client_ip].append(now)
 
 
+def _check_token_budget() -> None:
+    """Dagelijks token-budget (SEC-18): rem op kosten/misbruik over alle gebruikers samen.
+    Reset om middernacht (UTC). 0 = onbeperkt."""
+    global _tokens_today, _token_day
+    today = time.strftime("%Y-%m-%d", time.gmtime())
+    if today != _token_day:
+        _token_day = today
+        _tokens_today = 0
+    if _daily_token_budget and _tokens_today >= _daily_token_budget:
+        raise HTTPException(
+            503,
+            "Dagelijks chat-budget bereikt. Probeer het morgen opnieuw "
+            "of verhoog CHAT_DAILY_TOKEN_BUDGET.",
+        )
+
+
+def _add_tokens(used: int) -> None:
+    global _tokens_today
+    _tokens_today += used
+
+
 def _resolve_tls_verify(settings: Settings):
     """Bepaal de TLS-verify-waarde voor httpx: CA-bundle-pad, of bool.
 
@@ -154,35 +184,61 @@ def _resolve_tls_verify(settings: Settings):
 
 
 async def init_chat(settings: Settings) -> None:
-    global _client, _model, _chat_pool
+    global _client, _model, _chat_pool, _allow_main_pool_fallback, _daily_token_budget
     _model = settings.chat_model
-    if settings.openrouter_api_key:
-        import httpx
-        _client = AsyncOpenAI(
-            base_url="https://openrouter.ai/api/v1",
-            api_key=settings.openrouter_api_key,
-            timeout=30.0,
-            http_client=httpx.AsyncClient(verify=_resolve_tls_verify(settings)),
-        )
+    _daily_token_budget = settings.chat_daily_token_budget
+    _allow_main_pool_fallback = os.environ.get("ALLOW_NO_AUTH", "").strip().lower() in ("1", "true", "yes")
 
-    # Aparte read-only rol voor AI-gegenereerde SQL. Zonder CHAT_DB_USER valt de chat
-    # terug op de hoofd-pool (zie _get_chat_connection).
+    if not settings.openrouter_api_key:
+        return  # Chat uit: endpoint geeft netjes 503.
+
+    # Veiligheid (SEC-04): AI-gegenereerde SQL hoort onder een aparte read-only DB-rol te draaien.
+    # Zonder CHAT_DB_USER zou de chat terugvallen op de hoofd-pool (mogelijk schrijf-bevoegd).
+    # In productie schakelen we de chat dan UIT i.p.v. dat risico te nemen; in een afgeschermde
+    # interne omgeving (ALLOW_NO_AUTH=1) is de fallback expliciet toegestaan.
     if not settings.chat_db_user:
-        logger.info("CHAT_DB_USER niet gezet, chat gebruikt de hoofd-pool")
-        _chat_pool = None
-        return
-    try:
-        _chat_pool = await create_db_pool(
-            settings,
-            user=settings.chat_db_user,
-            password=settings.chat_db_password,
-            min_size=2,
-            max_size=5,
-        )
-        logger.info("Chat read-only pool created (user=%s)", settings.chat_db_user)
-    except Exception:
-        logger.warning("Chat read-only pool niet beschikbaar, fallback naar hoofdpool")
-        _chat_pool = None
+        if _allow_main_pool_fallback:
+            logger.warning(
+                "CHAT_DB_USER niet gezet; chat deelt de hoofd-pool. Alleen toegestaan in interne "
+                "modus (ALLOW_NO_AUTH=1). Zet CHAT_DB_USER/CHAT_DB_PASSWORD voor productie."
+            )
+            _chat_pool = None
+        else:
+            logger.critical(
+                "Chat UITGESCHAKELD: CHAT_DB_USER/CHAT_DB_PASSWORD ontbreekt. Een aparte read-only "
+                "chat-rol is verplicht in productie, zodat AI-SQL nooit als de schrijf-bevoegde "
+                "hoofd-gebruiker draait. Stel de rol in, of zet ALLOW_NO_AUTH=1 voor interne test."
+            )
+            _chat_pool = None
+            return  # _client blijft None -> endpoint geeft 503.
+    else:
+        try:
+            _chat_pool = await create_db_pool(
+                settings,
+                user=settings.chat_db_user,
+                password=settings.chat_db_password,
+                min_size=2,
+                max_size=5,
+            )
+            logger.info("Chat read-only pool created (user=%s)", settings.chat_db_user)
+        except Exception:
+            if _allow_main_pool_fallback:
+                logger.warning("Chat read-only pool niet beschikbaar, fallback naar hoofdpool (interne modus)")
+                _chat_pool = None
+            else:
+                logger.critical("Chat read-only pool niet beschikbaar; chat UITGESCHAKELD (geen fallback naar hoofd-pool in productie).")
+                _chat_pool = None
+                return  # _client blijft None -> endpoint geeft 503.
+
+    # DB-laag is veilig (eigen read-only pool, of expliciet toegestane interne fallback):
+    # pas nu de OpenRouter-client opzetten.
+    import httpx
+    _client = AsyncOpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=settings.openrouter_api_key,
+        timeout=30.0,
+        http_client=httpx.AsyncClient(verify=_resolve_tls_verify(settings)),
+    )
 
 
 async def close_chat_pool() -> None:
@@ -197,9 +253,14 @@ async def _get_chat_connection():
     if _chat_pool:
         async with _chat_pool.acquire() as conn:
             yield conn
-    else:
+    elif _allow_main_pool_fallback:
+        # Alleen in interne modus (ALLOW_NO_AUTH=1): geen aparte read-only rol beschikbaar.
         async with get_connection() as conn:
             yield conn
+    else:
+        # Productie zonder read-only pool: chat hoort hier niet te komen (init_chat zet _client
+        # dan op None -> 503). Defensief blokkeren, nooit stilletjes de hoofd-pool gebruiken.
+        raise HTTPException(503, "Chat niet beschikbaar: geen read-only databaserol geconfigureerd.")
 
 
 class ChatRequest(BaseModel):
@@ -229,6 +290,7 @@ async def chat(req: ChatRequest, request: Request):
 
     client_ip = request.client.host if request.client else "unknown"
     _check_rate_limit(client_ip)
+    _check_token_budget()
 
     # Begrens gelijktijdige LLM-conversaties; extra verzoeken wachten kort i.p.v.
     # de chat-pool (max 5) en de OpenRouter-quota te overspoelen.
@@ -309,6 +371,7 @@ async def _run_conversation(message: str) -> ChatResponse:
 
     answer = response.choices[0].message.content or "Geen antwoord gegenereerd."
 
+    _add_tokens(total_tokens)
     logger.info(
         "Chat afgerond: model=%s tokens=%d tool_loops=%d sql=%s",
         _model, total_tokens, loop_count, "ja" if sql_used else "nee",

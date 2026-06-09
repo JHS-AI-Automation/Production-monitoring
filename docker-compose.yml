@@ -39,6 +39,14 @@ services:
       db:
         condition: service_healthy
     restart: unless-stopped
+    # Resource-vangnet tegen geheugen-/proces-uitputting op het edge-device (SEC-27/SEC-12).
+    # ~100-150MB is normaal voor deze app; 512MB geeft ruime piek-marge maar stopt een
+    # runaway/geheugen-DoS ruim voordat het device-RAM vol loopt. no-new-privileges blokkeert
+    # privilege-escalatie binnen de container.
+    mem_limit: 512m
+    pids_limit: 256
+    security_opt:
+      - no-new-privileges:true
     healthcheck:
       # /api/health geeft 200 bij gezonde DB, 503 anders (urlopen gooit dan een fout).
       test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')\""]

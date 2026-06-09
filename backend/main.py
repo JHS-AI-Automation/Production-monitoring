@@ -38,6 +38,22 @@ AUTH_PASSWORD = os.environ.get("DASHBOARD_AUTH_PASSWORD", "")
 _AUTH_ENABLED = bool(AUTH_USER and AUTH_PASSWORD)
 _AUTH_EXEMPT = {"/api/health"}
 
+# Veiligheid: zonder ingestelde authenticatie weigert de app te starten (productie-default).
+# Voor een afgeschermde interne/test-omgeving kan dit expliciet worden uitgezet met ALLOW_NO_AUTH=1.
+_ALLOW_NO_AUTH = os.environ.get("ALLOW_NO_AUTH", "").strip().lower() in ("1", "true", "yes")
+
+# Bekende API-paden, gevuld bij startup. Metrics worden op dit lage-cardinaliteitslabel geteld
+# i.p.v. op het rauwe request-pad: dat voorkomt onbegrensde geheugengroei en label-injectie
+# via willekeurige /api/<x>-paden (die op de SPA-catch-all vallen).
+_KNOWN_API_PATHS: set[str] = set()
+
+
+def _metrics_label(path: str) -> str:
+    """Lage-cardinaliteitslabel voor metrics: alleen bekende API-paden los, rest gebundeld."""
+    if path in _KNOWN_API_PATHS:
+        return path
+    return "static" if not path.startswith("/api/") else "api_other"
+
 
 def _auth_ok(request: Request) -> bool:
     """Valideer HTTP Basic credentials in constante tijd."""
@@ -106,6 +122,22 @@ STATIC_DIR = Path(__file__).resolve().parent.parent / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Productie-default: weiger te starten zonder dashboard-authenticatie.
+    # ALLOW_NO_AUTH=1 is de bewuste escape voor een afgeschermde interne/test-omgeving.
+    if not _AUTH_ENABLED and not _ALLOW_NO_AUTH:
+        logger.critical(
+            "Start geweigerd: geen dashboard-authenticatie ingesteld. Zet "
+            "DASHBOARD_AUTH_USER en DASHBOARD_AUTH_PASSWORD in .env, of zet expliciet "
+            "ALLOW_NO_AUTH=1 voor een afgeschermde interne omgeving."
+        )
+        raise SystemExit(1)
+
+    # Vul de set bekende API-paden voor lage-cardinaliteit metrics-labels (zie _metrics_label).
+    _KNOWN_API_PATHS.update(
+        p for r in app.routes
+        if (p := getattr(r, "path", "")).startswith("/api/") and "{" not in p
+    )
+
     settings = Settings.from_env()
     await init_pool(settings)
     await init_chat(settings)
@@ -125,8 +157,6 @@ async def observability_middleware(request: Request, call_next):
     token = request_id_ctx.set(request_id)
     start = time.monotonic()
     path = request.url.path
-    # Endpoint-label laag-cardinaal houden: alleen API-paden los tellen, rest = "static".
-    endpoint = path if path.startswith("/api/") else "static"
     try:
         # Optionele Basic Auth (env-gated). /api/health blijft vrij voor de healthcheck.
         if _AUTH_ENABLED and path not in _AUTH_EXEMPT and not _auth_ok(request):
@@ -138,7 +168,7 @@ async def observability_middleware(request: Request, call_next):
             )
         response = await call_next(request)
         duration_ms = (time.monotonic() - start) * 1000
-        metrics.record(endpoint, response.status_code, duration_ms)
+        metrics.record(_metrics_label(path), response.status_code, duration_ms)
         response.headers["X-Request-ID"] = request_id
         if response.status_code >= 400:
             logger.warning(
@@ -148,7 +178,7 @@ async def observability_middleware(request: Request, call_next):
         return response
     except Exception:
         duration_ms = (time.monotonic() - start) * 1000
-        metrics.record(endpoint, 500, duration_ms)
+        metrics.record(_metrics_label(path), 500, duration_ms)
         logger.exception(
             "Unhandled error: %s %s (%dms)", request.method, path, round(duration_ms),
         )
@@ -222,7 +252,8 @@ async def metrics_prometheus():
         "# TYPE optimax_endpoint_requests_total counter",
     ]
     for ep, v in snap["endpoints"].items():
-        label = ep.replace('"', "")
+        # Escape per Prometheus-exposition-spec (backslash, quote, newline) tegen label-injectie.
+        label = ep.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "").replace("\r", "")
         lines.append(f'optimax_endpoint_requests_total{{endpoint="{label}"}} {v["count"]}')
         lines.append(f'optimax_endpoint_errors_total{{endpoint="{label}"}} {v["errors"]}')
         lines.append(f'optimax_endpoint_latency_ms_avg{{endpoint="{label}"}} {v["avg_ms"]}')
@@ -233,17 +264,37 @@ async def metrics_prometheus():
     return PlainTextResponse("\n".join(lines) + "\n")
 
 
+# Harde bovengrens op de client-log-body: ruim voldoende voor een stacktrace, maar voorkomt
+# dat een (ongeauthenticeerd) verzoek met een enorme payload het geheugen van het edge-device
+# belast. 16 KB ~ 2000 tekens stack + marge.
+_MAX_CLIENT_LOG_BYTES = 16_384
+
+
+def _strip_newlines(value: str) -> str:
+    """Verwijder CR/LF zodat client-input geen valse logregels kan injecteren (text-logformat)."""
+    return value.replace("\r", " ").replace("\n", " ")
+
+
 @app.post("/api/client-log")
 async def client_log(request: Request):
     """Frontend-foutrapportage: de ErrorBoundary stuurt hier render-fouten naartoe,
     zodat ze in de server-logs verschijnen (met request-id), zonder externe reporter."""
+    content_length = request.headers.get("content-length")
+    if content_length and content_length.isdigit() and int(content_length) > _MAX_CLIENT_LOG_BYTES:
+        return Response(status_code=413)
+    raw = await request.body()
+    if len(raw) > _MAX_CLIENT_LOG_BYTES:
+        return Response(status_code=413)
     try:
-        body = await request.json()
+        import json as _json
+        body = _json.loads(raw) if raw else {}
+        if not isinstance(body, dict):
+            body = {}
     except Exception:
         body = {}
-    message = str(body.get("message", ""))[:500]
-    url = str(body.get("url", ""))[:300]
-    stack = str(body.get("stack", ""))[:2000]
+    message = _strip_newlines(str(body.get("message", ""))[:500])
+    url = _strip_newlines(str(body.get("url", ""))[:300])
+    stack = _strip_newlines(str(body.get("stack", ""))[:2000])
     logger.warning("Frontend-fout: %s | url=%s | stack=%s", message, url, stack)
     return Response(status_code=204)
 

@@ -97,11 +97,24 @@ gekozen poort (auth in de container is `trust`, dus wachtwoord-waarde maakt loka
 CREATE ROLE chat_readonly LOGIN PASSWORD '...';
 GRANT CONNECT ON DATABASE db_dgs_01 TO chat_readonly;
 GRANT USAGE ON SCHEMA public TO chat_readonly;
-GRANT SELECT ON ALL TABLES IN SCHEMA public TO chat_readonly;
-ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO chat_readonly;
+-- Least privilege (SEC-05): alleen de 4 tabellen die de chat nodig heeft, NIET alle tabellen.
+GRANT SELECT ON plc_alarms, plc_alarms_mp1, capacity_perminutev2, palletstatus TO chat_readonly;
+-- Bewust GEEN "GRANT SELECT ON ALL TABLES" en GEEN "ALTER DEFAULT PRIVILEGES": anders kan de
+-- chat ook nieuwe/andere tabellen lezen. Voeg een tabel hier handmatig toe als de chat hem nodig heeft.
 ```
 
 Zet daarna `CHAT_DB_USER` / `CHAT_DB_PASSWORD` in `.env`. Load-test: `python scripts/load_test.py --users 5`.
+
+> **Hoofd-DB-rol read-only (SEC-06 mitigatie).** Omdat op het IXrouter5-MVP de secrets in het
+> image gebakken zitten, moet een gelekt DB-wachtwoord zo min mogelijk schade kunnen aanrichten.
+> Geef de hoofd-`DB_USER` daarom OOK alleen SELECT-rechten op de 4 tabellen (de app schrijft nooit):
+> ```sql
+> GRANT CONNECT ON DATABASE db_dgs_01 TO <DB_USER>;
+> GRANT USAGE ON SCHEMA public TO <DB_USER>;
+> GRANT SELECT ON plc_alarms, plc_alarms_mp1, capacity_perminutev2, palletstatus TO <DB_USER>;
+> -- geen INSERT/UPDATE/DELETE/DDL.
+> ```
+> Verifieer dit op de echte DGS-DB. Node-RED gebruikt een andere (schrijf-)rol; die deelt Optimax niet.
 
 ## Security
 
