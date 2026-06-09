@@ -1,0 +1,4 @@
+# Laat buildx pushen naar de IXrouter5-registry over HTTP (door Docker als "insecure" gezien).
+# Vervang het IP door dat van jullie router (gids-default: 192.168.140.1).
+[registry."192.168.140.1:5000"]
+  http = true

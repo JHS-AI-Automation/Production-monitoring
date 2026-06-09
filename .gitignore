@@ -17,3 +17,10 @@ frontend/tsconfig.tsbuildinfo
 
 # Office tijdelijke lock-bestanden
 ~$*
+
+# Gebouwde Docker-images (deploy-artefacten, kunnen tientallen MB groot zijn)
+*.tar
+*.tar.gz
+
+# IXrouter5 build-config met secrets (alleen het .example-bestand wordt gecommit)
+.ixrouter.env
