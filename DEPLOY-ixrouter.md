@@ -103,6 +103,17 @@ Dit gebruikt `buildkitd-ixrouter5.toml` (HTTP-registry) en de waarden uit `.ixro
    (DB_HOST=optimax-db met de demo-credentials).
 5. Start de container.
 
+## Integriteit bij tar-overdracht (SEC-25)
+
+De normale route is de registry-push (buildx print dan een `sha256:`-digest en het
+pull-mechanisme verifieert die automatisch). Draag je een image tóch als `.tar` over
+(USB-stick, mail, fileshare), verifieer dan de hash aan beide kanten vóór `docker load`:
+
+- Windows (PowerShell): `Get-FileHash optimax-arm64.tar -Algorithm SHA256`
+- Linux/Git Bash: `sha256sum optimax-arm64.tar`
+
+Komen de waarden niet overeen, dan is het bestand beschadigd of vervangen: niet laden.
+
 ## Controleren
 
 - `curl http://<router-ip>:9000/api/health` → `"status":"healthy"` en `db_pool` gevuld (DB bereikbaar).

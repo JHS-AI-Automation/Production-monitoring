@@ -42,20 +42,20 @@ Bewijs: `pytest` 24 passed / 4 skipped, plus `verify_security_fixes.py` 9/9 PASS
 
 - [x] **SEC-08** `[code]` security-response-headers (CSP same-origin, X-Frame-Options DENY, nosniff, Referrer-Policy) op elke response incl. 401/500-paden (2026-06-11). Daarmee zijn alle must-fix-code-items toegepast; TLS zelf = go-voorwaarde, zie 1c.
 - [x] SEC-09 `[code]` SQL-sanitizer-hardening: CTE's toegestaan, afgedwongen buiten-LIMIT via subquery-wrap, blocklist uitgebreid (INTO/SET/COPY/DO/CALL/...), multi-statements geweigerd (2026-06-11)
-- [ ] SEC-10 `[code]` brute-force-lockout op Basic Auth
+- [x] SEC-10 `[code]` brute-force-lockout op Basic Auth: 10 mislukte pogingen per IP binnen 5 min -> 429 met Retry-After; succesvolle login wist de teller; /api/health blijft vrij (2026-06-11)
 - [x] SEC-11 `[code/deploy]` Postgres-poort in compose gebonden aan loopback (host-toegang blijft, LAN niet) (2026-06-11)
-- [ ] SEC-14 `[code]` Promtail redaction-stage (indien observability-stack meegaat)
+- [x] SEC-14 `[code]` Promtail redaction-stages (OpenRouter-keys, Basic/Bearer-credentials, password-velden gemaskeerd vóór Loki) (2026-06-11)
 - [x] SEC-15 `[code]` certs via BuildKit bind-mount i.p.v. COPY: certificaat belandt nooit meer in een image-laag (2026-06-11; build-verificatie via CI)
 - [x] SEC-16 `[code]` `.ixrouter.env`, `*.tar`, `db/seed.sql`, `backend/tests/` in `.dockerignore` (`.env`-patroon matchte `.ixrouter.env` niet) (2026-06-11)
 - [x] SEC-17 `[code]` `message` max-length (2000) + anti-injectie-instructie in de system-prompt (2026-06-11)
 - [x] SEC-22 `[code]` startup-waarschuwing bij `CHAT_TLS_VERIFY=false` (zat al in `_resolve_tls_verify`, geverifieerd 2026-06-11)
 - [x] SEC-23 `[code]` `args.get("query","")` tegen KeyError bij malformed tool-call, incl. JSON-decode-vangnet (2026-06-11)
 - [x] SEC-24 `[code]` chat-historie naar sessionStorage (weg bij sluiten tabblad; oude localStorage-historie wordt eenmalig gewist) (2026-06-11)
-- [ ] SEC-25 `[deploy]` sha256-verificatie bij overdracht van `optimax-arm64.tar`
+- [x] SEC-25 `[deploy]` sha256-verificatie bij tar-overdracht gedocumenteerd in DEPLOY-ixrouter.md (registry-push verifieert digest al automatisch) (2026-06-11)
 - [x] SEC-29 `[code]` chat-availability-DoS: wall-clock-deadline (60s) per conversatie + begrensde wachttijd (10s) op een LLM-slot (2026-06-11; samen met SEC-18 = volledige chat-DoS-mitigatie). Budget-melding klantvriendelijk gemaakt.
 - [ ] OBS-1 `[code]` base-images op digest pinnen
 - [x] OBS-2 `[code]` SCHEMA_CONTEXT counter-labels gecorrigeerd (lijn 1/4 = robot-output, lijn 2/3 = overflow) (2026-06-11)
-- [ ] `[code]` `verify_security_fixes.py` promoveren tot vaste pytest-regressietests
+- [x] `[code]` `verify_security_fixes.py` gepromoveerd tot vaste pytest-regressietests (`backend/tests/test_security_regression.py`: SEC-01/04/07/10/18/27/28, draait in elke CI-run) (2026-06-11)
 
 ### 1c. Harde go-voorwaarden (Thomas/DGS, geen code)
 

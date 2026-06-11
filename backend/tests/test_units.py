@@ -100,6 +100,27 @@ def test_sanitize_sql_rejects_select_into_and_set():
         _sanitize_sql("SET search_path TO public")
 
 
+# --- Basic Auth brute-force-lockout (SEC-10) ---
+
+def test_auth_lockout_after_max_failures(monkeypatch):
+    from backend import main
+    monkeypatch.setattr(main, "_auth_failures", {})
+    for _ in range(main._AUTH_MAX_FAILURES):
+        main._register_auth_failure("10.0.0.1")
+    assert main._auth_locked("10.0.0.1")
+    assert not main._auth_locked("10.0.0.2")  # ander IP blijft vrij
+
+
+def test_auth_lockout_expires_after_window(monkeypatch):
+    import time
+    from backend import main
+    expired = time.monotonic() - main._AUTH_WINDOW_SECONDS - 1
+    monkeypatch.setattr(main, "_auth_failures", {"10.0.0.1": [expired] * 20})
+    assert not main._auth_locked("10.0.0.1")
+    # verlopen entries zijn opgeruimd (geen geheugenlek)
+    assert "10.0.0.1" not in main._auth_failures
+
+
 # --- database lazy reconnect (stroomuitval-scenario) ---
 
 def test_db_lazy_reconnect_restores_pool(monkeypatch):

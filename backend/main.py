@@ -94,6 +94,30 @@ def _auth_ok(request: Request) -> bool:
     return secrets.compare_digest(user, AUTH_USER) and secrets.compare_digest(pwd, AUTH_PASSWORD)
 
 
+# Brute-force-lockout op Basic Auth (SEC-10): na _AUTH_MAX_FAILURES mislukte pogingen
+# binnen het venster krijgt dat IP een 429 tot het venster is verlopen. Let op: net als
+# bij de chat-rate-limit delen gebruikers achter hetzelfde kantoor-NAT één IP.
+_AUTH_MAX_FAILURES = 10
+_AUTH_WINDOW_SECONDS = 300
+_auth_failures: dict[str, list[float]] = {}
+
+
+def _auth_locked(ip: str) -> bool:
+    """Is dit IP geblokkeerd? Ruimt en passant verlopen pogingen op (geen geheugenlek)."""
+    now = time.monotonic()
+    for known in list(_auth_failures):
+        fresh = [t for t in _auth_failures[known] if now - t < _AUTH_WINDOW_SECONDS]
+        if fresh:
+            _auth_failures[known] = fresh
+        else:
+            del _auth_failures[known]
+    return len(_auth_failures.get(ip, [])) >= _AUTH_MAX_FAILURES
+
+
+def _register_auth_failure(ip: str) -> None:
+    _auth_failures.setdefault(ip, []).append(time.monotonic())
+
+
 def _setup_logging() -> None:
     import json
     from logging.handlers import RotatingFileHandler
@@ -185,18 +209,36 @@ async def observability_middleware(request: Request, call_next):
     path = request.url.path
     try:
         # Optionele Basic Auth (env-gated). /api/health blijft vrij voor de healthcheck.
-        if _AUTH_ENABLED and path not in _AUTH_EXEMPT and not _auth_ok(request):
-            duration_ms = (time.monotonic() - start) * 1000
-            # 401's tellen mee in de metrics zodat brute-force-pogingen zichtbaar zijn.
-            metrics.record(_metrics_label(path), 401, duration_ms)
-            logger.warning("Auth geweigerd: %s %s", request.method, path)
-            resp = JSONResponse(
-                {"detail": "Niet geautoriseerd"},
-                status_code=401,
-                headers={"WWW-Authenticate": 'Basic realm="Optimax"', "X-Request-ID": request_id},
-            )
-            _apply_response_headers(resp, path)
-            return resp
+        if _AUTH_ENABLED and path not in _AUTH_EXEMPT:
+            client_ip = request.client.host if request.client else "unknown"
+            # Lockout (SEC-10) gaat vóór de credential-check: een gelockt IP krijgt
+            # geen nieuwe pogingen, ook niet met de juiste credentials.
+            if _auth_locked(client_ip):
+                duration_ms = (time.monotonic() - start) * 1000
+                metrics.record(_metrics_label(path), 429, duration_ms)
+                logger.warning("Auth-lockout actief voor %s (%s %s)", client_ip, request.method, path)
+                resp = JSONResponse(
+                    {"detail": "Te veel mislukte inlogpogingen. Probeer het over enkele minuten opnieuw."},
+                    status_code=429,
+                    headers={"Retry-After": str(_AUTH_WINDOW_SECONDS), "X-Request-ID": request_id},
+                )
+                _apply_response_headers(resp, path)
+                return resp
+            if not _auth_ok(request):
+                _register_auth_failure(client_ip)
+                duration_ms = (time.monotonic() - start) * 1000
+                # 401's tellen mee in de metrics zodat brute-force-pogingen zichtbaar zijn.
+                metrics.record(_metrics_label(path), 401, duration_ms)
+                logger.warning("Auth geweigerd: %s %s", request.method, path)
+                resp = JSONResponse(
+                    {"detail": "Niet geautoriseerd"},
+                    status_code=401,
+                    headers={"WWW-Authenticate": 'Basic realm="Optimax"', "X-Request-ID": request_id},
+                )
+                _apply_response_headers(resp, path)
+                return resp
+            # Succesvolle login wist de mislukte pogingen van dit IP.
+            _auth_failures.pop(client_ip, None)
         response = await call_next(request)
         duration_ms = (time.monotonic() - start) * 1000
         metrics.record(_metrics_label(path), response.status_code, duration_ms)
