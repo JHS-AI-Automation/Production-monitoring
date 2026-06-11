@@ -43,10 +43,10 @@ Bewijs: `pytest` 24 passed / 4 skipped, plus `verify_security_fixes.py` 9/9 PASS
 - [x] **SEC-08** `[code]` security-response-headers (CSP same-origin, X-Frame-Options DENY, nosniff, Referrer-Policy) op elke response incl. 401/500-paden (2026-06-11). Daarmee zijn alle must-fix-code-items toegepast; TLS zelf = go-voorwaarde, zie 1c.
 - [x] SEC-09 `[code]` SQL-sanitizer-hardening: CTE's toegestaan, afgedwongen buiten-LIMIT via subquery-wrap, blocklist uitgebreid (INTO/SET/COPY/DO/CALL/...), multi-statements geweigerd (2026-06-11)
 - [ ] SEC-10 `[code]` brute-force-lockout op Basic Auth
-- [ ] SEC-11 `[code/deploy]` Postgres-poort 5432 uit de prod-compose (of binden aan loopback)
+- [x] SEC-11 `[code/deploy]` Postgres-poort in compose gebonden aan loopback (host-toegang blijft, LAN niet) (2026-06-11)
 - [ ] SEC-14 `[code]` Promtail redaction-stage (indien observability-stack meegaat)
-- [ ] SEC-15 `[code]` `certs/` conditioneel in image + in `.dockerignore`
-- [ ] SEC-16 `[code]` `.ixrouter.env` en `*.env` in `.dockerignore`
+- [x] SEC-15 `[code]` certs via BuildKit bind-mount i.p.v. COPY: certificaat belandt nooit meer in een image-laag (2026-06-11; build-verificatie via CI)
+- [x] SEC-16 `[code]` `.ixrouter.env`, `*.tar`, `db/seed.sql`, `backend/tests/` in `.dockerignore` (`.env`-patroon matchte `.ixrouter.env` niet) (2026-06-11)
 - [x] SEC-17 `[code]` `message` max-length (2000) + anti-injectie-instructie in de system-prompt (2026-06-11)
 - [x] SEC-22 `[code]` startup-waarschuwing bij `CHAT_TLS_VERIFY=false` (zat al in `_resolve_tls_verify`, geverifieerd 2026-06-11)
 - [x] SEC-23 `[code]` `args.get("query","")` tegen KeyError bij malformed tool-call, incl. JSON-decode-vangnet (2026-06-11)
@@ -118,7 +118,7 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 
 - [x] `[code]` SPA-caching: `no-cache` op index.html/SPA-fallback, `immutable` (1 jaar) op gehashte assets (2026-06-11)
 - [ ] `[code]` DST-dagen: shift-minuten berekenen i.p.v. hardcoded 1080
-- [ ] `[code]` `exec` in de container-CMD voor nette SIGTERM-shutdown
+- [x] `[code]` `exec` in de container-CMD: uvicorn is PID 1 en ontvangt SIGTERM direct (2026-06-11)
 - [x] `[code]` 401's meetellen in metrics (brute-force zichtbaar; auth-weigering werd niet geteld) (2026-06-11)
 - [ ] `[code]` `load_dotenv(override=False)` overwegen (precedence-verrassing)
 - [ ] `[code]` Chat: alle uitgevoerde SQL's tonen bij multi-query-antwoorden

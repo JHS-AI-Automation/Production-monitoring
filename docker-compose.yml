@@ -1,8 +1,11 @@
 services:
   db:
     image: postgres:16-alpine
+    # Alleen op loopback publiceren (SEC-11): de dashboard-container bereikt de DB via
+    # het compose-netwerk; host-toegang (psql/Adminer) blijft werken via localhost,
+    # maar de rest van het LAN kan niet meer rechtstreeks bij Postgres.
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "127.0.0.1:${DB_PORT:-5432}:5432"
     environment:
       POSTGRES_DB: ${DB_NAME:-db_dgs_01}
       POSTGRES_USER: ${DB_USER}

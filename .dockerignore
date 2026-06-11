@@ -30,3 +30,16 @@ docs/
 observability/
 *.md
 docker-compose*.yml
+
+# Build-config met router-instellingen (SEC-16): hoort nooit in de build-context.
+# Let op: de bestaande .env/.env.*-patronen matchen .ixrouter.env NIET.
+.ixrouter.env
+*.ixrouter.env
+
+# Gebouwde images en gegenereerde seeds: groot en irrelevant voor de build-context
+*.tar
+*.tar.gz
+db/seed.sql
+
+# Tests draaien niet in het runtime-image
+backend/tests/

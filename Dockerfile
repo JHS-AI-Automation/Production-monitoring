@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Stage 1: Build React frontend
 FROM node:20-alpine AS frontend-build
 WORKDIR /app/frontend
@@ -14,10 +15,14 @@ COPY backend/requirements.txt ./
 
 # Optionele bedrijfs-CA voor builds achter SSL-inspectie (default UIT).
 # Leg het root-certificaat als .crt in certs/ en bouw met --build-arg INSTALL_CORP_CA=1.
-# Zonder dat (certs/ bevat alleen .gitkeep) verandert er niets aan de normale build.
+# De certs komen binnen via een BuildKit bind-mount (SEC-15): anders dan met COPY
+# belandt het certificaat dan NOOIT in een image-laag, ook niet bij een gewone build
+# terwijl er toevallig een .crt in certs/ ligt.
 ARG INSTALL_CORP_CA=0
-COPY certs/ /usr/local/share/ca-certificates/corp/
-RUN if [ "$INSTALL_CORP_CA" = "1" ]; then \
+RUN --mount=type=bind,source=certs,target=/tmp/corp-certs \
+    if [ "$INSTALL_CORP_CA" = "1" ]; then \
+        mkdir -p /usr/local/share/ca-certificates/corp && \
+        cp /tmp/corp-certs/*.crt /usr/local/share/ca-certificates/corp/ && \
         apt-get update && apt-get install -y --no-install-recommends ca-certificates && \
         update-ca-certificates && rm -rf /var/lib/apt/lists/* && \
         pip install --no-cache-dir --cert /etc/ssl/certs/ca-certificates.crt -r requirements.txt; \
@@ -58,5 +63,6 @@ USER appuser
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://localhost:%s/api/health' % os.environ.get('APP_PORT','8080'))" || exit 1
 
-# Shell-vorm zodat ${APP_PORT} wordt ingevuld bij het starten.
-CMD ["sh", "-c", "uvicorn backend.main:app --host 0.0.0.0 --port ${APP_PORT:-8080}"]
+# Shell-vorm zodat ${APP_PORT} wordt ingevuld bij het starten; exec zorgt dat uvicorn
+# PID 1 wordt en SIGTERM direct ontvangt (nette shutdown i.p.v. 10s docker-kill).
+CMD ["sh", "-c", "exec uvicorn backend.main:app --host 0.0.0.0 --port ${APP_PORT:-8080}"]
