@@ -215,6 +215,23 @@ def test_db_reconnect_backoff_limits_attempts(monkeypatch):
     asyncio.run(scenario())
 
 
+# --- chat-historie trimming ---
+
+def test_history_messages_trims_count_and_length():
+    from backend.routers.chat import MAX_HISTORY_ITEMS, MAX_MESSAGE_CHARS, ChatHistoryItem, _history_messages
+
+    items = [ChatHistoryItem(role="user", content=f"vraag {i}") for i in range(25)]
+    out = _history_messages(items)
+    assert len(out) == MAX_HISTORY_ITEMS
+    assert out[-1]["content"] == "vraag 24"  # de jongste berichten blijven
+
+    long = [ChatHistoryItem(role="assistant", content="x" * 5000)]
+    assert len(_history_messages(long)[0]["content"]) == MAX_MESSAGE_CHARS
+
+    blanks = [ChatHistoryItem(role="user", content="   ")]
+    assert _history_messages(blanks) == []
+
+
 # --- metrics ---
 
 def test_metrics_records_and_aggregates():

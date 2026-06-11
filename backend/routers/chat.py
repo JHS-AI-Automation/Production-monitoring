@@ -6,6 +6,7 @@ import re
 import time
 from collections import defaultdict
 from contextlib import asynccontextmanager
+from typing import Literal
 
 import asyncpg
 from openai import AsyncOpenAI
@@ -38,6 +39,11 @@ RATE_LIMIT_WINDOW = 60
 
 # Invoer-grens (SEC-17): houdt prompt-injectie-payloads en token-verspilling klein.
 MAX_MESSAGE_CHARS = 2000
+
+# Conversatie-historie voor vervolgvragen ("en de dag ervoor?"). Server-side begrensd:
+# meer items of langere teksten worden getrimd, niet geweigerd (oudere clients en lange
+# gesprekken blijven gewoon werken; de grens is een kosten-/context-rem, geen validatiefout).
+MAX_HISTORY_ITEMS = 10
 
 # Buiten-LIMIT die de wrap in _sanitize_sql afdwingt: een binnen-LIMIT van het
 # model kan dus nooit meer dan dit aantal rijen opleveren (RAM-bescherming).
@@ -290,14 +296,31 @@ async def _get_chat_connection():
         raise HTTPException(503, "Chat niet beschikbaar: geen read-only databaserol geconfigureerd.")
 
 
+class ChatHistoryItem(BaseModel):
+    # Alleen user/assistant: een client mag nooit een extra system-bericht injecteren.
+    role: Literal["user", "assistant"]
+    content: str
+
+
 class ChatRequest(BaseModel):
     message: str
+    history: list[ChatHistoryItem] = []
 
 
 class ChatResponse(BaseModel):
     answer: str
     sql: str | None = None
     data: list[dict] | None = None
+
+
+def _history_messages(history: list[ChatHistoryItem]) -> list[dict]:
+    """Trim de meegestuurde historie tot de laatste MAX_HISTORY_ITEMS berichten,
+    elk gemaximeerd op MAX_MESSAGE_CHARS, in OpenAI-message-vorm."""
+    return [
+        {"role": h.role, "content": h.content[:MAX_MESSAGE_CHARS]}
+        for h in history[-MAX_HISTORY_ITEMS:]
+        if h.content.strip()
+    ]
 
 
 async def _execute_query(sql: str) -> list[dict]:
@@ -333,7 +356,10 @@ async def chat(req: ChatRequest, request: Request):
     except asyncio.TimeoutError:
         raise HTTPException(503, "Het is op dit moment druk op de chat. Probeer het over een minuut opnieuw.")
     try:
-        return await asyncio.wait_for(_run_conversation(message), timeout=CHAT_DEADLINE_SECONDS)
+        return await asyncio.wait_for(
+            _run_conversation(message, _history_messages(req.history)),
+            timeout=CHAT_DEADLINE_SECONDS,
+        )
     except asyncio.TimeoutError:
         logger.warning("Chat-conversatie afgebroken na %ds deadline", CHAT_DEADLINE_SECONDS)
         raise HTTPException(
@@ -349,9 +375,10 @@ def _usage_tokens(response) -> int:
     return getattr(usage, "total_tokens", 0) or 0
 
 
-async def _run_conversation(message: str) -> ChatResponse:
+async def _run_conversation(message: str, history: list[dict] | None = None) -> ChatResponse:
     messages = [
         {"role": "system", "content": SCHEMA_CONTEXT},
+        *(history or []),
         {"role": "user", "content": message},
     ]
 

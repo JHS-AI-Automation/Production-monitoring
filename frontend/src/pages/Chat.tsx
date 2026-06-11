@@ -137,11 +137,14 @@ export default function Chat() {
     if (!msg || loading) return;
 
     setInput("");
+    // Historie vastleggen VOOR het toevoegen van het nieuwe bericht: de vraag zelf
+    // gaat als 'message' mee, de voorgaande beurten als context (zonder sql/data).
+    const history = messages.slice(-10).map((m) => ({ role: m.role, content: m.content }));
     setMessages((prev) => trimMessages([...prev, { role: "user", content: msg }]));
     setLoading(true);
 
     try {
-      const res = await sendChatMessage(msg);
+      const res = await sendChatMessage(msg, history);
       setMessages((prev) =>
         trimMessages([
           ...prev,

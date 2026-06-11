@@ -111,7 +111,7 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 - [x] `[code]` Alarm-impact rekent nu over alarm-intervallen (trigger tot resolve via LEAD + generate_series; onopgelost telt door tot einde dag) i.p.v. alleen de trigger-minuut. Interval-SQL wordt in CI tegen echte Postgres geoefend (2026-06-11)
 - [x] `[code]` Chat: outer-LIMIT afgedwongen via subquery-wrap, resultset begrensd op 1000 rijen (2026-06-11, onderdeel SEC-09)
 - [x] `[code]` Chat: CTE's (`WITH ... SELECT`) toegestaan in de sanitizer (2026-06-11, onderdeel SEC-09)
-- [ ] `[code]` Chat: conversatie-historie (laatste N berichten) meesturen naar de backend voor vervolgvragen
+- [x] `[code]` Chat: conversatie-historie (laatste 10 berichten, alleen rol+tekst) gaat mee naar de backend voor vervolgvragen; server trimt op aantal/lengte en pydantic weigert 'system'-rollen (geen prompt-injectie via historie) (2026-06-11)
 - [x] `[code]` Alarmenlijst: page geclampt vóór de data-query (geen zinloze OFFSET-scan) + `%`/`_`/`\` ge-escaped in de ILIKE-zoekterm (2026-06-11)
 
 ### LOW (opportunistisch)

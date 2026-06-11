@@ -94,11 +94,16 @@ export interface ChatApiResponse {
   data: Record<string, unknown>[] | null;
 }
 
-export async function sendChatMessage(message: string): Promise<ChatApiResponse> {
+export async function sendChatMessage(
+  message: string,
+  history: { role: "user" | "assistant"; content: string }[] = [],
+): Promise<ChatApiResponse> {
+  // Historie (laatste berichten, alleen rol+tekst) geeft de AI context voor
+  // vervolgvragen ("en de dag ervoor?"); de backend trimt op aantal en lengte.
   const res = await fetch("/api/chat", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, history }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
