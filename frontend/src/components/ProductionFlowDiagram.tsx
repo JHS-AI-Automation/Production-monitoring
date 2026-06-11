@@ -198,8 +198,8 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
   const d = hourlyData.find(h => h.hour === activeHourStr) ?? peak;
 
   const minutely = useApi<MinutelyProduction[]>(
-    () => selectedHour !== null
-      ? fetchMinutelyProduction(date, selectedHour)
+    (signal) => selectedHour !== null
+      ? fetchMinutelyProduction(date, selectedHour, signal)
       : Promise.resolve([]),
     [date, selectedHour],
     selectedHour !== null ? `prod-min-${date}-${selectedHour}` : undefined,

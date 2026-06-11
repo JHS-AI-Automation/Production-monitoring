@@ -46,7 +46,7 @@ export function combineApi(...results: ApiState[]) {
 }
 
 export function useApi<T>(
-  fetcher: () => Promise<T>,
+  fetcher: (signal?: AbortSignal) => Promise<T>,
   deps: unknown[],
   cacheKey?: string,
 ): { data: T | null; loading: boolean; error: string | null; retry: () => void } {
@@ -73,9 +73,16 @@ export function useApi<T>(
     setLoading(true);
     setError(null);
 
-    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT);
+    // Twee soorten abort: door ONZE timeout (echte fout, gebruiker moet het zien)
+    // of door unmount/nieuwe load (stil negeren). timedOut maakt het onderscheid;
+    // voorheen verdween de timeout in de stille tak en bleef de spinner eeuwig staan.
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, FETCH_TIMEOUT);
 
-    fetcher()
+    fetcher(controller.signal)
       .then((result) => {
         if (!controller.signal.aborted) {
           setData(result);
@@ -83,17 +90,15 @@ export function useApi<T>(
         }
       })
       .catch((e) => {
-        if (!controller.signal.aborted) {
-          if (e instanceof DOMException && e.name === "AbortError") {
-            setError("Verbinding time-out. Controleer of de backend draait.");
-          } else {
-            setError(e.message ?? "Onbekende fout");
-          }
+        if (timedOut) {
+          setError("Verbinding time-out. Controleer of de backend draait.");
+        } else if (!controller.signal.aborted) {
+          setError(e instanceof Error ? e.message : "Onbekende fout");
         }
       })
       .finally(() => {
         clearTimeout(timeout);
-        if (!controller.signal.aborted) setLoading(false);
+        if (timedOut || !controller.signal.aborted) setLoading(false);
       });
   }
 

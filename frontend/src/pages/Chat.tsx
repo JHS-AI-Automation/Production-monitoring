@@ -88,10 +88,15 @@ function trimMessages(msgs: ChatMessage[]): ChatMessage[] {
   return msgs.length > MAX_MESSAGES ? msgs.slice(-MAX_MESSAGES) : msgs;
 }
 
-// Geschiedenis bewaren in localStorage zodat hij blijft staan na wegnavigeren of refresh.
+// Geschiedenis in sessionStorage (SEC-24): blijft staan bij wegnavigeren binnen het
+// tabblad, maar verdwijnt bij het sluiten ervan. Op een gedeelde kiosk-/werkvloer-PC
+// kan de volgende gebruiker dus niet de chatvragen van de vorige teruglezen.
 function loadMessages(): ChatMessage[] {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    // Migratie: historie van een eerdere versie stond in localStorage; eenmalig wissen
+    // zodat die niet eeuwig op een gedeelde PC blijft staan.
+    localStorage.removeItem(STORAGE_KEY);
+    const raw = sessionStorage.getItem(STORAGE_KEY);
     return raw ? (JSON.parse(raw) as ChatMessage[]) : [];
   } catch {
     return [];
@@ -113,12 +118,12 @@ export default function Chat() {
   useEffect(() => {
     try {
       if (messages.length > 0) {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
+        sessionStorage.setItem(STORAGE_KEY, JSON.stringify(messages));
       } else {
-        localStorage.removeItem(STORAGE_KEY);
+        sessionStorage.removeItem(STORAGE_KEY);
       }
     } catch {
-      // localStorage kan vol/uit staan; geschiedenis-persistentie is niet kritisch.
+      // sessionStorage kan vol/uit staan; geschiedenis-persistentie is niet kritisch.
     }
   }, [messages]);
 

@@ -41,12 +41,12 @@ export default function Pallets() {
   const [date, setDate] = useState(yesterday);
 
   const summary = useApi<PalletSummary>(
-    () => fetchPalletSummary(date),
+    (signal) => fetchPalletSummary(date, signal),
     [date],
     `pallet-summary-${date}`,
   );
   const hourly = useApi<HourlyPallet[]>(
-    () => fetchHourlyPallets(date),
+    (signal) => fetchHourlyPallets(date, signal),
     [date],
     `pallet-hourly-${date}`,
   );

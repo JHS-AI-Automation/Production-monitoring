@@ -50,7 +50,7 @@ Bewijs: `pytest` 24 passed / 4 skipped, plus `verify_security_fixes.py` 9/9 PASS
 - [x] SEC-17 `[code]` `message` max-length (2000) + anti-injectie-instructie in de system-prompt (2026-06-11)
 - [x] SEC-22 `[code]` startup-waarschuwing bij `CHAT_TLS_VERIFY=false` (zat al in `_resolve_tls_verify`, geverifieerd 2026-06-11)
 - [x] SEC-23 `[code]` `args.get("query","")` tegen KeyError bij malformed tool-call, incl. JSON-decode-vangnet (2026-06-11)
-- [ ] SEC-24 `[code]` chat-historie naar sessionStorage/TTL bij kiosk-deploy
+- [x] SEC-24 `[code]` chat-historie naar sessionStorage (weg bij sluiten tabblad; oude localStorage-historie wordt eenmalig gewist) (2026-06-11)
 - [ ] SEC-25 `[deploy]` sha256-verificatie bij overdracht van `optimax-arm64.tar`
 - [x] SEC-29 `[code]` chat-availability-DoS: wall-clock-deadline (60s) per conversatie + begrensde wachttijd (10s) op een LLM-slot (2026-06-11; samen met SEC-18 = volledige chat-DoS-mitigatie). Budget-melding klantvriendelijk gemaakt.
 - [ ] OBS-1 `[code]` base-images op digest pinnen
@@ -102,7 +102,7 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 ### HIGH (voor go-live)
 
 - [ ] `[code]` **DB-reconnect**: lazy re-init met backoff in `database.py` zodat de app herstelt als Postgres later op is dan het dashboard (stroomuitval-scenario op de IXrouter, geen compose-`depends_on` daar)
-- [ ] `[code]` **Frontend-timeout fixen**: `signal` doorgeven aan fetch in `api.ts` + abort-door-timeout wél als fout tonen in `useApi.ts` (nu: eeuwige spinner na 15s, dode foutmelding)
+- [x] `[code]` **Frontend-timeout gefixt**: `signal` wordt doorgegeven aan fetch in `api.ts` (alle 13 fetchers + 12 call-sites) en abort-door-timeout toont nu een echte foutmelding i.p.v. een eeuwige spinner (2026-06-11)
 - [ ] `[code/beslissing]` **Timezone eenduidig**: vaststellen of Node-RED lokale tijd of UTC schrijft, daarna één conversiestrategie voor shift-venster, piekuur en alarm-impact + `TZ=Europe/Amsterdam` in de container + `date.today()`-default fixen
 
 ### MEDIUM (eerste patch na go-live)

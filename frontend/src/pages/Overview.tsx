@@ -33,17 +33,17 @@ export default function Overview() {
   const [date, setDate] = useState(yesterday);
 
   const stats = useApi<AlarmStats>(
-    () => fetchStats(date),
+    (signal) => fetchStats(date, signal),
     [date],
     `stats-${date}`,
   );
   const top = useApi<TopAlarm[]>(
-    () => fetchTopAlarms(date),
+    (signal) => fetchTopAlarms(date, 10, signal),
     [date],
     `top-${date}`,
   );
   const oee = useApi<OeeData>(
-    () => fetchOee(date),
+    (signal) => fetchOee(date, signal),
     [date],
     `oee-${date}`,
   );

@@ -28,7 +28,7 @@ export default function Trends() {
   const { from, to } = rangeEndingYesterday(days);
 
   const { data, loading, error, retry } = useApi<TrendPoint[]>(
-    () => fetchTrends(from, to),
+    (signal) => fetchTrends(from, to, signal),
     [days],
     `trends-${days}`,
   );

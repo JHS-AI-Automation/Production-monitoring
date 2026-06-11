@@ -26,19 +26,19 @@ export default function AlarmList() {
   }, [date, severity, search]);
 
   const { data: res, loading, error, retry } = useApi(
-    () =>
+    (signal) =>
       fetchAlarmList({
         date,
         severity: severity || undefined,
         search: search || undefined,
         page,
         per_page: 50,
-      }),
+      }, signal),
     [date, severity, search, page],
   );
 
   const openAlarms = useApi<OpenAlarm[]>(
-    () => fetchOpenAlarms(date),
+    (signal) => fetchOpenAlarms(date, signal),
     [date],
     `open-${date}`,
   );

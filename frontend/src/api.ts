@@ -36,8 +36,10 @@ export interface TrendPoint {
   resolved: number;
 }
 
-async function get<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+// signal komt uit useApi: zo kan een unmount/timeout de fetch ook echt afbreken
+// (voorheen werd het signal genegeerd en liep het verzoek door).
+async function get<T>(url: string, signal?: AbortSignal): Promise<T> {
+  const res = await fetch(url, { signal });
   if (!res.ok) throw new Error(`API error: ${res.status} ${res.statusText}`);
   return res.json();
 }
@@ -48,16 +50,16 @@ export interface OpenAlarm {
   last_seen: string;
 }
 
-export function fetchOpenAlarms(date: string): Promise<OpenAlarm[]> {
-  return get(`${BASE}/open?date=${date}`);
+export function fetchOpenAlarms(date: string, signal?: AbortSignal): Promise<OpenAlarm[]> {
+  return get(`${BASE}/open?date=${date}`, signal);
 }
 
-export function fetchStats(date: string): Promise<AlarmStats> {
-  return get(`${BASE}/stats?date=${date}`);
+export function fetchStats(date: string, signal?: AbortSignal): Promise<AlarmStats> {
+  return get(`${BASE}/stats?date=${date}`, signal);
 }
 
-export function fetchTopAlarms(date: string, limit = 10): Promise<TopAlarm[]> {
-  return get(`${BASE}/top?date=${date}&limit=${limit}`);
+export function fetchTopAlarms(date: string, limit = 10, signal?: AbortSignal): Promise<TopAlarm[]> {
+  return get(`${BASE}/top?date=${date}&limit=${limit}`, signal);
 }
 
 export function fetchAlarmList(params: {
@@ -66,17 +68,17 @@ export function fetchAlarmList(params: {
   search?: string;
   page?: number;
   per_page?: number;
-}): Promise<AlarmListResponse> {
+}, signal?: AbortSignal): Promise<AlarmListResponse> {
   const qs = new URLSearchParams({ date: params.date });
   if (params.severity) qs.set("severity", params.severity);
   if (params.search) qs.set("search", params.search);
   if (params.page) qs.set("page", String(params.page));
   if (params.per_page) qs.set("per_page", String(params.per_page));
-  return get(`${BASE}/list?${qs}`);
+  return get(`${BASE}/list?${qs}`, signal);
 }
 
-export function fetchTrends(from: string, to: string): Promise<TrendPoint[]> {
-  return get(`${BASE}/trends?from=${from}&to=${to}`);
+export function fetchTrends(from: string, to: string, signal?: AbortSignal): Promise<TrendPoint[]> {
+  return get(`${BASE}/trends?from=${from}&to=${to}`, signal);
 }
 
 export interface ChatMessage {
@@ -151,8 +153,8 @@ export interface AlarmImpact {
   hourly_correlation: { hour: string; production: number; alarms: number }[];
 }
 
-export function fetchProductionSummary(date: string): Promise<ProductionSummary> {
-  return get(`/api/production/summary?date=${date}`);
+export function fetchProductionSummary(date: string, signal?: AbortSignal): Promise<ProductionSummary> {
+  return get(`/api/production/summary?date=${date}`, signal);
 }
 
 export interface MinutelyProduction {
@@ -164,20 +166,20 @@ export interface MinutelyProduction {
   total: number;
 }
 
-export function fetchHourlyProduction(date: string): Promise<HourlyProduction[]> {
-  return get(`/api/production/hourly?date=${date}`);
+export function fetchHourlyProduction(date: string, signal?: AbortSignal): Promise<HourlyProduction[]> {
+  return get(`/api/production/hourly?date=${date}`, signal);
 }
 
-export function fetchMinutelyProduction(date: string, hour: number): Promise<MinutelyProduction[]> {
-  return get(`/api/production/minutely?date=${date}&hour=${hour}`);
+export function fetchMinutelyProduction(date: string, hour: number, signal?: AbortSignal): Promise<MinutelyProduction[]> {
+  return get(`/api/production/minutely?date=${date}&hour=${hour}`, signal);
 }
 
-export function fetchProductionTrends(from: string, to: string): Promise<ProductionTrend[]> {
-  return get(`/api/production/trends?from=${from}&to=${to}`);
+export function fetchProductionTrends(from: string, to: string, signal?: AbortSignal): Promise<ProductionTrend[]> {
+  return get(`/api/production/trends?from=${from}&to=${to}`, signal);
 }
 
-export function fetchAlarmImpact(date: string): Promise<AlarmImpact> {
-  return get(`/api/production/alarm-impact?date=${date}`);
+export function fetchAlarmImpact(date: string, signal?: AbortSignal): Promise<AlarmImpact> {
+  return get(`/api/production/alarm-impact?date=${date}`, signal);
 }
 
 export interface OeeLineData {
@@ -217,8 +219,8 @@ export interface OeeData {
   six_big_losses: OeeSixBigLoss[];
 }
 
-export function fetchOee(date: string): Promise<OeeData> {
-  return get(`/api/production/oee?date=${date}`);
+export function fetchOee(date: string, signal?: AbortSignal): Promise<OeeData> {
+  return get(`/api/production/oee?date=${date}`, signal);
 }
 
 // ── Pallet KPI's ────────────────────────────────────────────────────
@@ -244,10 +246,10 @@ export interface HourlyPallet {
   s6015: number;
 }
 
-export function fetchPalletSummary(date: string): Promise<PalletSummary> {
-  return get(`/api/pallets/summary?date=${date}`);
+export function fetchPalletSummary(date: string, signal?: AbortSignal): Promise<PalletSummary> {
+  return get(`/api/pallets/summary?date=${date}`, signal);
 }
 
-export function fetchHourlyPallets(date: string): Promise<HourlyPallet[]> {
-  return get(`/api/pallets/hourly?date=${date}`);
+export function fetchHourlyPallets(date: string, signal?: AbortSignal): Promise<HourlyPallet[]> {
+  return get(`/api/pallets/hourly?date=${date}`, signal);
 }

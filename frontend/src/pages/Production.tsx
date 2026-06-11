@@ -34,17 +34,17 @@ export default function Production() {
   const [date, setDate] = useState(yesterday);
 
   const summary = useApi<ProductionSummary>(
-    () => fetchProductionSummary(date),
+    (signal) => fetchProductionSummary(date, signal),
     [date],
     `prod-summary-${date}`,
   );
   const hourly = useApi<HourlyProduction[]>(
-    () => fetchHourlyProduction(date),
+    (signal) => fetchHourlyProduction(date, signal),
     [date],
     `prod-hourly-${date}`,
   );
   const impact = useApi<AlarmImpact>(
-    () => fetchAlarmImpact(date),
+    (signal) => fetchAlarmImpact(date, signal),
     [date],
     `prod-impact-${date}`,
   );
