@@ -6,6 +6,8 @@ import Production from "./pages/Production";
 import Pallets from "./pages/Pallets";
 import Trends from "./pages/Trends";
 import Chat from "./pages/Chat";
+import MotorOverview from "./pages/maintenance/MotorOverview";
+import { FEATURES } from "./features";
 
 export default function App() {
   return (
@@ -17,6 +19,7 @@ export default function App() {
         <Route path="/pallets" element={<Pallets />} />
         <Route path="/trends" element={<Trends />} />
         <Route path="/chat" element={<Chat />} />
+        {FEATURES.maintenance && <Route path="/maintenance" element={<MotorOverview />} />}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Route>
     </Routes>

@@ -20,6 +20,7 @@ from backend.database import check_health, close_pool, init_pool, pool_stats
 from backend.observability import RequestIdFilter, metrics, request_id_ctx
 from backend.routers.alarms import router as alarms_router
 from backend.routers.chat import router as chat_router, init_chat, close_chat_pool
+from backend.routers.maintenance import router as maintenance_router
 from backend.routers.pallets import router as pallets_router
 from backend.routers.production import router as production_router
 
@@ -270,6 +271,9 @@ app.include_router(alarms_router)
 app.include_router(production_router)
 app.include_router(pallets_router)
 app.include_router(chat_router)
+# Maintenance: demo op synthetische data (read-only). De frontend toont de sectie pas
+# als FEATURES.maintenance aanstaat; het endpoint zelf is onschadelijk.
+app.include_router(maintenance_router)
 
 
 @app.get("/api/health")
