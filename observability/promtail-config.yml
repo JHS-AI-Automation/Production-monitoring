@@ -20,9 +20,11 @@ scrape_configs:
       # Redaction (SEC-14): maskeer secrets die per ongeluk in een logregel belanden
       # vóórdat ze naar Loki gaan. Bewust zonder capture-groups: dan vervangt Promtail
       # de hele match. De app logt vandaag geen secrets; dit is een vangnet.
+      # Vervangtekst bewust ZONDER het key-prefix: de secret-scan-guard in CI matcht
+      # op dat prefix en zou anders over deze config zelf struikelen.
       - replace:
           expression: 'sk-or-v1-[A-Za-z0-9]+'
-          replace: 'sk-or-v1-REDACTED'
+          replace: 'REDACTED-OPENROUTER-KEY'
       - replace:
           expression: '(?i)(?:Basic|Bearer) [A-Za-z0-9+/=._-]{8,}'
           replace: 'REDACTED-CREDENTIAL'

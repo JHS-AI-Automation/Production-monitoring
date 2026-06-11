@@ -53,7 +53,7 @@ Bewijs: `pytest` 24 passed / 4 skipped, plus `verify_security_fixes.py` 9/9 PASS
 - [x] SEC-24 `[code]` chat-historie naar sessionStorage (weg bij sluiten tabblad; oude localStorage-historie wordt eenmalig gewist) (2026-06-11)
 - [x] SEC-25 `[deploy]` sha256-verificatie bij tar-overdracht gedocumenteerd in DEPLOY-ixrouter.md (registry-push verifieert digest al automatisch) (2026-06-11)
 - [x] SEC-29 `[code]` chat-availability-DoS: wall-clock-deadline (60s) per conversatie + begrensde wachttijd (10s) op een LLM-slot (2026-06-11; samen met SEC-18 = volledige chat-DoS-mitigatie). Budget-melding klantvriendelijk gemaakt.
-- [ ] OBS-1 `[code]` base-images op digest pinnen
+- [ ] OBS-1 `[code]` base-images op digest pinnen. Poging 2026-06-11: Docker Hub API onbereikbaar vanaf dit netwerk. How-to (5 min, op onbeperkt netwerk): `docker pull node:20-alpine && docker images --digests` (idem python:3.12-slim, postgres:16-alpine), daarna `FROM node:20-alpine@sha256:...` in Dockerfile/Dockerfile.db/compose
 - [x] OBS-2 `[code]` SCHEMA_CONTEXT counter-labels gecorrigeerd (lijn 1/4 = robot-output, lijn 2/3 = overflow) (2026-06-11)
 - [x] `[code]` `verify_security_fixes.py` gepromoveerd tot vaste pytest-regressietests (`backend/tests/test_security_regression.py`: SEC-01/04/07/10/18/27/28, draait in elke CI-run) (2026-06-11)
 
