@@ -44,6 +44,11 @@ ENV APP_COMMIT=${APP_COMMIT}
 # worden opgegeven. Er wordt bewust NIETS ingebakken: dit image staat in een open lokale
 # registry en mag dus geen secrets bevatten (uitleesbaar via docker history/inspect).
 
+# Fabriekstijd: logs, healthcheck-tijden en alles dat naive "nu" gebruikt rekent in
+# Amsterdam-tijd i.p.v. UTC. De API-datumdefaults gebruiken daarnaast expliciet
+# zoneinfo (backend/timewindow.py), dus die kloppen ook zonder deze ENV.
+ENV TZ=Europe/Amsterdam
+
 # Poort instelbaar via build-arg. De router-web-UI draait zelf op 8080; kies voor de
 # router bijv. APP_PORT=9000 om botsing te voorkomen. Default blijft 8080 (compose).
 # Runtime-override kan ook: APP_PORT als env-var bij het starten (CMD leest hem uit env).

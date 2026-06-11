@@ -103,7 +103,7 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 
 - [x] `[code]` **DB-reconnect**: lazy re-init met 30s-backoff in `database.py` (lock tegen gelijktijdige pogingen; de Docker-healthcheck drijft het herstel ook zonder verkeer aan). App herstelt nu als Postgres later op is dan het dashboard (2026-06-11; 2 regressietests)
 - [x] `[code]` **Frontend-timeout gefixt**: `signal` wordt doorgegeven aan fetch in `api.ts` (alle 13 fetchers + 12 call-sites) en abort-door-timeout toont nu een echte foutmelding i.p.v. een eeuwige spinner (2026-06-11)
-- [ ] `[code/beslissing]` **Timezone eenduidig**: vaststellen of Node-RED lokale tijd of UTC schrijft, daarna één conversiestrategie voor shift-venster, piekuur en alarm-impact + `TZ=Europe/Amsterdam` in de container + `date.today()`-default fixen
+- [ ] `[code/beslissing]` **Timezone eenduidig**. Code-deel GEDAAN (2026-06-11): `factory_today()` (zoneinfo Europe/Amsterdam) vervangt `date.today()` in alle datumdefaults; `TZ=Europe/Amsterdam` in de container; tzdata in requirements. OPEN: vaststellen of Node-RED lokale tijd of UTC schrijft (bepaalt of shift-venster/piekuur-queries `AT TIME ZONE` nodig hebben). Verificatie (1 min, met VPN aan): `SELECT now(), max(time) FROM readstartstop3` op de live DB; ligt max(time) ~2u achter op de Amsterdamse klok dan schrijft Node-RED UTC, loopt hij gelijk dan lokale tijd. Probe-poging 2026-06-11: VPN uit, DB onbereikbaar.
 
 ### MEDIUM (eerste patch na go-live)
 

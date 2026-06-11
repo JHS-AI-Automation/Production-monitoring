@@ -3,3 +3,6 @@ uvicorn[standard]==0.34.2
 asyncpg==0.30.0
 python-dotenv==1.1.0
 openai==1.82.0
+# Tijdzone-database voor zoneinfo (Europe/Amsterdam): nodig op Windows-dev en in
+# slanke containers zonder OS-tzdata. Data-only pakket, geen code.
+tzdata==2025.2

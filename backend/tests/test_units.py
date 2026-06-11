@@ -8,7 +8,7 @@ from fastapi import HTTPException
 from backend.observability import Metrics
 from backend.routers.alarms import escape_like
 from backend.routers.chat import _sanitize_sql
-from backend.timewindow import MAX_TREND_DAYS, validate_date, validate_range
+from backend.timewindow import MAX_TREND_DAYS, factory_today, validate_date, validate_range
 
 
 # --- alarmlijst zoekterm-escape ---
@@ -20,24 +20,26 @@ def test_escape_like_neutralizes_wildcards():
 
 
 # --- timewindow ---
+# Verwachtingen rekenen met factory_today() (Amsterdam), net als de implementatie:
+# op een host in een andere tijdzone zou date.today() rond middernacht afwijken.
 
 def test_validate_date_default_is_yesterday():
-    assert validate_date(None) == date.today() - timedelta(days=1)
+    assert validate_date(None) == factory_today() - timedelta(days=1)
 
 
 def test_validate_date_rejects_future():
     with pytest.raises(HTTPException):
-        validate_date(date.today() + timedelta(days=1))
+        validate_date(factory_today() + timedelta(days=1))
 
 
 def test_validate_date_accepts_past():
-    d = date.today() - timedelta(days=5)
+    d = factory_today() - timedelta(days=5)
     assert validate_date(d) == d
 
 
 def test_validate_range_defaults_to_last_30_days():
     frm, to = validate_range(None, None)
-    assert to == date.today() - timedelta(days=1)
+    assert to == factory_today() - timedelta(days=1)
     assert (to - frm).days == 29
 
 
@@ -49,8 +51,8 @@ def test_validate_range_rejects_from_after_to():
 def test_validate_range_caps_period():
     with pytest.raises(HTTPException):
         validate_range(
-            date.today() - timedelta(days=MAX_TREND_DAYS + 5),
-            date.today() - timedelta(days=1),
+            factory_today() - timedelta(days=MAX_TREND_DAYS + 5),
+            factory_today() - timedelta(days=1),
         )
 
 
