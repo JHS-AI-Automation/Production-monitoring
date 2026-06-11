@@ -1,20 +1,48 @@
 name: CI
 
+# Kwaliteitspoort op elke push/PR: lint + tests (backend MET echte Postgres + seed,
+# zodat de DB-afhankelijke tests hier wel draaien) + frontend build + Docker-build-check
+# + niet-blokkerende dependency-audits + secret-scan-guard.
+#
+# Bewuste grenzen:
+# - Geen CD naar de SecureEdge: de router-registry (poort 5000) leeft op een prive-LAN
+#   achter de IXON-VPN en is vanaf GitHub-runners onbereikbaar. Deploy blijft lokaal
+#   via scripts/build-ixrouter.sh (zie DEPLOY-ixrouter.md).
+# - Docker-build-check is amd64: een arm64-build onder QEMU-emulatie duurt 15+ min
+#   (npm ci + vite geemuleerd) en vangt zelden iets dat amd64 niet vangt.
+
 on:
   push:
     branches: [main]
   pull_request:
     branches: [main]
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   backend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: db_dgs_01
+          POSTGRES_USER: ci
+          POSTGRES_PASSWORD: ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
     env:
-      # Dummy DB-config zodat de app kan starten (fail-fast vereist deze vars).
-      # Zonder echte database vallen de DB-afhankelijke tests netjes weg (zie conftest).
       DB_HOST: localhost
       DB_PORT: "5432"
-      DB_NAME: ci
+      DB_NAME: db_dgs_01
       DB_USER: ci
       DB_PASSWORD: ci
     steps:
@@ -22,13 +50,27 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+          cache: pip
       - name: Installeer dependencies
         run: pip install -r backend/requirements-dev.txt
-      - name: Pytest
-        run: pytest
+      - name: Ruff (lint)
+        run: ruff check backend scripts
+      - name: Seed test-database (3 dagen dummy-data)
+        env:
+          PGPASSWORD: ci
+        run: |
+          python scripts/generate_dummy_data.py --days 3 > /tmp/seed.sql
+          psql -h localhost -U ci -d db_dgs_01 -q -f /tmp/seed.sql
+      - name: Pytest (incl. DB-afhankelijke tests, geen skips toegestaan)
+        # De 4 DB-tests skippen stilletjes als de DB onbereikbaar is; in CI met
+        # service-Postgres is een skip dus een misconfiguratie en geen succes.
+        run: |
+          pytest -v 2>&1 | tee /tmp/pytest.out
+          ! grep -E "skipped" /tmp/pytest.out
 
   frontend:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: frontend
@@ -43,5 +85,48 @@ jobs:
         run: npm ci
       - name: Vitest
         run: npm run test
-      - name: Build
+      - name: Build (tsc type-check + vite)
         run: npm run build
+
+  docker:
+    # Verifieert de Dockerfile end-to-end (multi-stage, BuildKit bind-mount voor certs,
+    # dockerignore) zonder te pushen. Vangt build-regressies die lokaal gemist worden.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Docker build (amd64, geen push)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: optimax:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  hygiene:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Secret-scan-guard
+        # Goedkope vangrail (geleerd van een eerder bijna-lek): bekende secret-patronen
+        # mogen nergens in de repo staan. De workflow zelf is uitgesloten (bevat de patronen).
+        run: |
+          ! git grep -nIE "sk-or-v1-[A-Za-z0-9]{8}|BEGIN (RSA|OPENSSH|EC) PRIVATE KEY" -- . ':(exclude).github/workflows/ci.yml'
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: pip-audit (informatief, niet-blokkerend)
+        continue-on-error: true
+        run: |
+          pip install pip-audit
+          pip-audit -r backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: npm audit (informatief, niet-blokkerend)
+        continue-on-error: true
+        working-directory: frontend
+        run: npm audit --audit-level=high

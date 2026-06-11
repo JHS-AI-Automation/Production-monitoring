@@ -494,8 +494,8 @@ async def get_oee(target_date: date = Query(default=None, alias="date")):
     avg_speed_loss = round(total_speed_loss / 4)
     avg_oee = round(sum(oee_values) / len(oee_values) * 100, 1) if oee_values else 0
 
-    avg_a = round(sum(l["availability"] for l in per_line) / 4, 1)
-    avg_p = round(sum(l["performance"] for l in per_line) / 4, 1)
+    avg_a = round(sum(line["availability"] for line in per_line) / 4, 1)
+    avg_p = round(sum(line["performance"] for line in per_line) / 4, 1)
 
     alarm_map = {r["severityclass"]: int(r["event_count"]) for r in alarm_losses}
     six_big = [
