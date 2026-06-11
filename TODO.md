@@ -107,7 +107,7 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 
 ### MEDIUM (eerste patch na go-live)
 
-- [ ] `[code]` Ontbrekende minuten als downtime tellen (generate_series-raster) of datagaten expliciet rapporteren in OEE/stilstand
+- [x] `[code]` Datagaten expliciet gerapporteerd in OEE/stilstand: `data_gap_minutes` in /summary en /oee (verwachte shift-minuten minus gemeten rijen; lopende dag naar rato) + amber-waarschuwing op de Productie-pagina. Bewust NIET als stilstand geteld: een meetgat is "logger weg", niet "lijn stond stil" (2026-06-11)
 - [ ] `[code]` Alarm-impact op alarm-intervallen (trigger tot resolve) i.p.v. alleen de trigger-minuut
 - [x] `[code]` Chat: outer-LIMIT afgedwongen via subquery-wrap, resultset begrensd op 1000 rijen (2026-06-11, onderdeel SEC-09)
 - [x] `[code]` Chat: CTE's (`WITH ... SELECT`) toegestaan in de sanitizer (2026-06-11, onderdeel SEC-09)

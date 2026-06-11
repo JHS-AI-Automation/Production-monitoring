@@ -71,6 +71,14 @@ export default function Production() {
 
       {error && <ErrorBanner message={error} onRetry={retryAll} />}
 
+      {s && !error && s.data_gap_minutes > 0 && (
+        <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm text-amber-800">
+          Let op: {s.data_gap_minutes} van de {s.shift_minutes} shift-minuten hebben{" "}
+          <strong>geen meetdata</strong> (logger of dataverbinding weg). Deze minuten tellen
+          niet mee als stilstand; de KPI's hieronder gaan alleen over de gemeten minuten.
+        </div>
+      )}
+
       {s && !error && (
         <>
           {s.grand_total === 0 ? (

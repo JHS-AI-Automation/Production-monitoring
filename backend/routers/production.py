@@ -57,12 +57,12 @@ Buiten shift wordt niet geproduceerd, stilstand alleen binnen shift geteld.
    Speed Loss (onderprestatie t.o.v. ideal rate), Quality Loss (placeholder 0)
 """
 
-from datetime import date, time
+from datetime import date, datetime, time
 
 from fastapi import APIRouter, Query
 
 from backend.database import get_connection
-from backend.timewindow import validate_date, validate_range
+from backend.timewindow import FACTORY_TZ, validate_date, validate_range
 
 router = APIRouter(prefix="/api/production", tags=["production"])
 
@@ -70,6 +70,22 @@ SHIFT_START = time(5, 0)
 SHIFT_END = time(23, 0)
 SHIFT_MINUTES = 1080
 TZ = "Europe/Amsterdam"
+
+
+def expected_shift_minutes(target_date: date, now: datetime | None = None) -> int:
+    """Hoeveel meetminuten horen er in het shift-venster van deze dag te zitten?
+
+    Volle (verleden) dag: SHIFT_MINUTES. Voor vandaag telt alleen het deel van de
+    shift dat al verstreken is, anders zou een lopende dag altijd een enorm
+    "datagat" rapporteren. `now` is injecteerbaar voor tests.
+    """
+    now = now or datetime.now(FACTORY_TZ)
+    if target_date < now.date():
+        return SHIFT_MINUTES
+    shift_start = datetime.combine(target_date, SHIFT_START, tzinfo=FACTORY_TZ)
+    shift_end = datetime.combine(target_date, SHIFT_END, tzinfo=FACTORY_TZ)
+    elapsed = (min(now, shift_end) - shift_start).total_seconds()
+    return max(0, int(elapsed // 60))
 
 
 def _line_payload(row, label_key: str, label_value) -> dict:
@@ -184,6 +200,12 @@ async def get_production_summary(target_date: date = Query(default=None, alias="
     grand_total = sum(per_line)
     dt_minutes = [int(downtime[f"line_{i}"]) for i in range(4)]
 
+    # Datagat: minuten binnen het shift-venster ZONDER meetrij. Dat is "logger of
+    # pipeline weg", niet per se "lijn stond stil"; daarom expliciet apart
+    # gerapporteerd i.p.v. stilletjes als stilstand geteld (KPI-eerlijkheid).
+    recorded = int(downtime["total_shift_minutes"] or 0)
+    data_gap = max(0, expected_shift_minutes(target_date) - recorded)
+
     # --- KPI 4: Lijn-balans ratio ---
     # Formule: MIN(lijn-totaal) / MAX(lijn-totaal)
     # Bereik: 0.0 - 1.0
@@ -198,6 +220,7 @@ async def get_production_summary(target_date: date = Query(default=None, alias="
         "per_line": per_line,
         "downtime_minutes": dt_minutes,
         "shift_minutes": SHIFT_MINUTES,
+        "data_gap_minutes": data_gap,
         "peak_hour": peak["hour"].strftime("%H:%M") if peak and peak["hour"] else None,
         "peak_hour_total": int(peak["total"]) if peak and peak["total"] else 0,
         "line_balance": line_balance,
@@ -442,6 +465,8 @@ async def get_oee(target_date: date = Query(default=None, alias="date")):
         )
 
     total_min = int(stats["total_minutes"]) if stats["total_minutes"] else 0
+    # Zelfde KPI-eerlijkheid als in /summary: meetgaten apart rapporteren.
+    data_gap = max(0, expected_shift_minutes(target_date) - total_min)
     if total_min == 0:
         return {
             "date": target_date.isoformat(),
@@ -452,6 +477,7 @@ async def get_oee(target_date: date = Query(default=None, alias="date")):
             "per_line": [],
             "losses": None,
             "six_big_losses": [],
+            "data_gap_minutes": data_gap,
         }
 
     per_line = []
@@ -520,4 +546,5 @@ async def get_oee(target_date: date = Query(default=None, alias="date")):
             "effective_time": total_min - avg_downtime - avg_speed_loss,
         },
         "six_big_losses": six_big,
+        "data_gap_minutes": data_gap,
     }

@@ -115,6 +115,7 @@ export interface ProductionSummary {
   per_line: number[];
   downtime_minutes: number[];
   shift_minutes: number;
+  data_gap_minutes: number;
   peak_hour: string | null;
   peak_hour_total: number;
   line_balance: number | null;
@@ -217,6 +218,7 @@ export interface OeeData {
   per_line: OeeLineData[];
   losses: OeeLosses | null;
   six_big_losses: OeeSixBigLoss[];
+  data_gap_minutes: number;
 }
 
 export function fetchOee(date: string, signal?: AbortSignal): Promise<OeeData> {

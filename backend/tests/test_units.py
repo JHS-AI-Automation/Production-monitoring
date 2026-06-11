@@ -102,6 +102,31 @@ def test_sanitize_sql_rejects_select_into_and_set():
         _sanitize_sql("SET search_path TO public")
 
 
+# --- productie: verwachte shift-minuten (voor datagat-rapportage) ---
+
+def test_expected_shift_minutes_full_past_day():
+    from datetime import datetime
+    from backend.routers.production import SHIFT_MINUTES, expected_shift_minutes
+    from backend.timewindow import FACTORY_TZ
+    now = datetime(2026, 6, 11, 12, 0, tzinfo=FACTORY_TZ)
+    assert expected_shift_minutes(date(2026, 6, 10), now=now) == SHIFT_MINUTES
+
+
+def test_expected_shift_minutes_today_partial():
+    from datetime import datetime
+    from backend.routers.production import expected_shift_minutes
+    from backend.timewindow import FACTORY_TZ
+    # Om 07:00 zijn er 2 uur shift (05:00-07:00) verstreken -> 120 minuten verwacht.
+    now = datetime(2026, 6, 11, 7, 0, tzinfo=FACTORY_TZ)
+    assert expected_shift_minutes(date(2026, 6, 11), now=now) == 120
+    # Voor de shift-start: nog niets verwacht.
+    early = datetime(2026, 6, 11, 4, 0, tzinfo=FACTORY_TZ)
+    assert expected_shift_minutes(date(2026, 6, 11), now=early) == 0
+    # Na shift-eind: de volle shift.
+    late = datetime(2026, 6, 11, 23, 30, tzinfo=FACTORY_TZ)
+    assert expected_shift_minutes(date(2026, 6, 11), now=late) == 1080
+
+
 # --- Basic Auth brute-force-lockout (SEC-10) ---
 
 def test_auth_lockout_after_max_failures(monkeypatch):
