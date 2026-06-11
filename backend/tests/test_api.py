@@ -80,12 +80,8 @@ def test_security_headers_on_error_response(client):
 
 
 def test_spa_cache_headers(client):
-    # index.html mag nooit gecachet worden (verse deploy direct zichtbaar);
-    # alleen relevant als de frontend-build aanwezig is.
-    import pytest
-    from backend.main import STATIC_DIR
-    if not STATIC_DIR.is_dir():
-        pytest.skip("static/ ontbreekt (frontend niet gebouwd)")
+    # index.html mag nooit gecachet worden (verse deploy direct zichtbaar).
+    # conftest garandeert een static-stub, dus dit draait ook zonder frontend-build.
     r = client.get("/")
     assert r.headers.get("cache-control") == "no-cache"
 

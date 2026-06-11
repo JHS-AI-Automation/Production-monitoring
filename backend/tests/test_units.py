@@ -100,6 +100,73 @@ def test_sanitize_sql_rejects_select_into_and_set():
         _sanitize_sql("SET search_path TO public")
 
 
+# --- database lazy reconnect (stroomuitval-scenario) ---
+
+def test_db_lazy_reconnect_restores_pool(monkeypatch):
+    """Pool weg + DB weer bereikbaar -> get_connection herstelt de pool vanzelf."""
+    import asyncio
+    from types import SimpleNamespace
+    from backend import database
+
+    fake_settings = SimpleNamespace(db_host="test-db", db_port=5432, db_name="test")
+
+    class FakeAcquire:
+        async def __aenter__(self):
+            return "fake-conn"
+        async def __aexit__(self, *exc):
+            return False
+
+    class FakePool:
+        def acquire(self):
+            return FakeAcquire()
+
+    async def fake_create(settings, **kw):
+        return FakePool()
+
+    async def scenario():
+        monkeypatch.setattr(database, "_pool", None)
+        monkeypatch.setattr(database, "_settings", fake_settings)
+        monkeypatch.setattr(database, "_last_attempt", float("-inf"))
+        monkeypatch.setattr(database, "create_db_pool", fake_create)
+        async with database.get_connection() as conn:
+            assert conn == "fake-conn"
+        assert database._pool is not None
+
+    asyncio.run(scenario())
+
+
+def test_db_reconnect_backoff_limits_attempts(monkeypatch):
+    """Mislukte reconnect -> binnen het backoff-interval geen tweede poging."""
+    import asyncio
+    from types import SimpleNamespace
+    from backend import database
+
+    calls = []
+
+    async def failing_create(settings, **kw):
+        calls.append(1)
+        raise OSError("db down")
+
+    async def scenario():
+        monkeypatch.setattr(database, "_pool", None)
+        monkeypatch.setattr(
+            database, "_settings", SimpleNamespace(db_host="test-db", db_port=5432, db_name="test")
+        )
+        monkeypatch.setattr(database, "_last_attempt", float("-inf"))
+        monkeypatch.setattr(database, "create_db_pool", failing_create)
+
+        with pytest.raises(RuntimeError):
+            async with database.get_connection():
+                pass
+        with pytest.raises(RuntimeError):
+            async with database.get_connection():
+                pass
+        # Eén echte poging; de tweede request valt binnen de backoff.
+        assert len(calls) == 1
+
+    asyncio.run(scenario())
+
+
 # --- metrics ---
 
 def test_metrics_records_and_aggregates():

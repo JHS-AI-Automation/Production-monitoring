@@ -101,7 +101,7 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 
 ### HIGH (voor go-live)
 
-- [ ] `[code]` **DB-reconnect**: lazy re-init met backoff in `database.py` zodat de app herstelt als Postgres later op is dan het dashboard (stroomuitval-scenario op de IXrouter, geen compose-`depends_on` daar)
+- [x] `[code]` **DB-reconnect**: lazy re-init met 30s-backoff in `database.py` (lock tegen gelijktijdige pogingen; de Docker-healthcheck drijft het herstel ook zonder verkeer aan). App herstelt nu als Postgres later op is dan het dashboard (2026-06-11; 2 regressietests)
 - [x] `[code]` **Frontend-timeout gefixt**: `signal` wordt doorgegeven aan fetch in `api.ts` (alle 13 fetchers + 12 call-sites) en abort-door-timeout toont nu een echte foutmelding i.p.v. een eeuwige spinner (2026-06-11)
 - [ ] `[code/beslissing]` **Timezone eenduidig**: vaststellen of Node-RED lokale tijd of UTC schrijft, daarna één conversiestrategie voor shift-venster, piekuur en alarm-impact + `TZ=Europe/Amsterdam` in de container + `date.today()`-default fixen
 

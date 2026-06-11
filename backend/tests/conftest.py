@@ -20,6 +20,14 @@ os.environ.setdefault("ALLOW_NO_AUTH", "1")
 # Repo-root op het pad zodat 'backend' importeerbaar is, ongeacht waar pytest draait.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+# De SPA-routes registreren alleen als static/ bestaat (zie backend.main). In CI is de
+# frontend niet gebouwd; maak een minimale stub zodat de cache-header-tests overal
+# draaien i.p.v. stilletjes te skippen. MOET vóór de import van backend.main.
+_static = Path(__file__).resolve().parents[2] / "static"
+if not (_static / "index.html").exists():
+    (_static / "assets").mkdir(parents=True, exist_ok=True)
+    (_static / "index.html").write_text("<!doctype html><title>stub</title>", encoding="utf-8")
+
 from backend.main import app  # noqa: E402
 
 
