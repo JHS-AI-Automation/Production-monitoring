@@ -16,6 +16,9 @@ from fastapi.testclient import TestClient
 # zonder dashboard-authenticatie start (anders weigert lifespan te starten). MOET
 # vóór de import van backend.main, want de vlag wordt bij import gelezen.
 os.environ.setdefault("ALLOW_NO_AUTH", "1")
+# Maintenance-endpoints zijn flag-gated (trunk-based); in tests altijd aan zodat de
+# maintenance-suite meedraait en de CI no-skip-gate niet afgaat.
+os.environ.setdefault("MAINTENANCE_ENABLED", "1")
 
 # Repo-root op het pad zodat 'backend' importeerbaar is, ongeacht waar pytest draait.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))

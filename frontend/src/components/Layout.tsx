@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { NavLink, Outlet } from "react-router-dom";
-import { LayoutDashboard, List, Factory, Package, TrendingUp, MessageSquare, Menu, X } from "lucide-react";
+import { LayoutDashboard, List, Factory, Package, TrendingUp, MessageSquare, Gauge, Menu, X } from "lucide-react";
 import brand from "../brand";
+import { FEATURES } from "../features";
 
-const NAV = [
+const INZICHT = [
   { to: "/", label: "Overzicht", icon: LayoutDashboard },
   { to: "/alarms", label: "Alarmen", icon: List },
   { to: "/production", label: "Productie", icon: Factory },
@@ -12,21 +13,20 @@ const NAV = [
   { to: "/chat", label: "Chat", icon: MessageSquare },
 ] as const;
 
+const MAINTENANCE = [
+  { to: "/maintenance", label: "Motoren", icon: Gauge },
+] as const;
+
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
-  const sidebar = (
-    <>
-      <div className="px-5 py-5 border-b border-dgs-700">
-        {brand.logo ? (
-          <img src={brand.logo} alt={brand.appName} className="h-7" />
-        ) : (
-          <span className="text-xl font-bold tracking-tight text-white">{brand.appName}</span>
-        )}
-        <p className="text-xs text-dgs-100/70 mt-1">{brand.subtitle}</p>
-      </div>
-      <nav className="flex-1 px-3 py-4 space-y-1">
-        {NAV.map(({ to, label, icon: Icon }) => (
+  const renderGroup = (title: string, items: readonly { to: string; label: string; icon: typeof Gauge }[]) => (
+    <div>
+      <p className="px-3 mb-1 text-[10px] font-semibold uppercase tracking-wider text-dgs-100/40">
+        {title}
+      </p>
+      <div className="space-y-1">
+        {items.map(({ to, label, icon: Icon }) => (
           <NavLink
             key={to}
             to={to}
@@ -44,6 +44,23 @@ export default function Layout() {
             {label}
           </NavLink>
         ))}
+      </div>
+    </div>
+  );
+
+  const sidebar = (
+    <>
+      <div className="px-5 py-5 border-b border-dgs-700">
+        {brand.logo ? (
+          <img src={brand.logo} alt={brand.appName} className="h-7" />
+        ) : (
+          <span className="text-xl font-bold tracking-tight text-white">{brand.appName}</span>
+        )}
+        <p className="text-xs text-dgs-100/70 mt-1">{brand.subtitle}</p>
+      </div>
+      <nav className="flex-1 px-3 py-4 space-y-5 overflow-y-auto">
+        {renderGroup("Inzicht", INZICHT)}
+        {FEATURES.maintenance && renderGroup("Maintenance", MAINTENANCE)}
       </nav>
       <div className="px-5 py-4 border-t border-dgs-700 text-xs text-dgs-100/50">
         {brand.footer}
