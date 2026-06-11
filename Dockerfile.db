@@ -1,0 +1,15 @@
+# Dummy-data Postgres voor de Optimax-DEMO op de IXON SecureEdge.
+# Seedt zichzelf bij eerste start (lege volume) via /docker-entrypoint-initdb.d/.
+#
+# LET OP: dit is een DEMO-database met DUMMY-data. Het wachtwoord hieronder is een
+# wegwerp-demo-credential dat alleen nepdata op een intern netwerk afschermt, GEEN echt
+# secret. De echte DGS-secrets horen nooit in een image (zie DEPLOY-ixrouter.md).
+FROM postgres:16-alpine
+
+ENV POSTGRES_DB=db_dgs_01 \
+    POSTGRES_USER=optimax \
+    POSTGRES_PASSWORD=optimax_demo
+
+# seed.sql wordt door scripts/build-ixrouter-db.sh vers gegenereerd (~3 maanden dummy-data)
+# vlak voor de build. Postgres draait *.sql in initdb.d alleen bij een lege data-volume.
+COPY db/seed.sql /docker-entrypoint-initdb.d/10-seed.sql

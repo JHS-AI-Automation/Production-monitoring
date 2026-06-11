@@ -1,0 +1,2 @@
+# Map voor de gegenereerde dummy-data seed (db/seed.sql, gitignored).
+# Wordt gevuld door scripts/build-ixrouter-db.sh vlak voor de build.

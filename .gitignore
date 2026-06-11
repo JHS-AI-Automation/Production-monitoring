@@ -28,3 +28,6 @@ certs/*
 
 # IXrouter5 build-config met secrets (alleen het .example-bestand wordt gecommit)
 .ixrouter.env
+
+# Gegenereerde dummy-data seed (groot, regenereerbaar via build-ixrouter-db.sh)
+db/seed.sql

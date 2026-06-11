@@ -1,0 +1,43 @@
+# Optimax DEMO als IXON Edge App op de SecureEdge Pro ("DGS R&D Logger").
+#
+# Twee containers: een Postgres met ~3 maanden dummy-data (optimax-db) en het dashboard
+# (optimax) dat daarop draait. Beide images staan al in de lokale registry van de SecureEdge:
+#   192.168.23.254:5000/optimax-db:latest
+#   192.168.23.254:5000/optimax:latest
+#
+# Te installeren door iemand met IXON Edge App Management-rechten (zie docs/optimax-ixon-handover.md).
+# DEMO-data (geen echte monitoring). De services bereiken elkaar op naam binnen het
+# machine-builder-netwerk dat IXON voor Edge Apps gebruikt; daarom DB_HOST=optimax-db.
+services:
+  optimax-db:
+    image: 192.168.23.254:5000/optimax-db:latest
+    restart: unless-stopped
+    volumes:
+      - optimax-db-data:/var/lib/postgresql/data
+    # Geen gepubliceerde poort: alleen intern bereikbaar voor de optimax-container.
+
+  optimax:
+    image: 192.168.23.254:5000/optimax:latest
+    restart: unless-stopped
+    depends_on:
+      - optimax-db
+    ports:
+      - "9000:9000"
+    environment:
+      DB_HOST: optimax-db
+      DB_PORT: "5432"
+      DB_NAME: db_dgs_01
+      DB_USER: optimax
+      DB_PASSWORD: optimax_demo
+      DASHBOARD_AUTH_USER: dgs
+      # Echte waarde staat in .ixrouter.env (gitignored) of vraag Jasper. Niet leeg laten:
+      # zonder dashboard-wachtwoord start de app niet (veilige default).
+      DASHBOARD_AUTH_PASSWORD: ZET_HIER_HET_DASHBOARD_WACHTWOORD
+      LOG_FORMAT: json
+      LOG_LEVEL: INFO
+    volumes:
+      - optimax-logs:/app/logs
+
+volumes:
+  optimax-db-data:
+  optimax-logs:
