@@ -64,6 +64,32 @@ def test_chat_empty_message_is_rejected(client):
     assert r.status_code == 400
 
 
+def test_security_headers_present(client):
+    # SEC-08: security-headers op elke response (ook API).
+    r = client.get("/api/version")
+    assert "default-src 'self'" in r.headers.get("content-security-policy", "")
+    assert r.headers.get("x-frame-options") == "DENY"
+    assert r.headers.get("x-content-type-options") == "nosniff"
+    assert r.headers.get("referrer-policy") == "same-origin"
+
+
+def test_security_headers_on_error_response(client):
+    r = client.get("/api/alarms/stats?date=2099-01-01")  # 400-pad
+    assert r.status_code == 400
+    assert r.headers.get("x-content-type-options") == "nosniff"
+
+
+def test_spa_cache_headers(client):
+    # index.html mag nooit gecachet worden (verse deploy direct zichtbaar);
+    # alleen relevant als de frontend-build aanwezig is.
+    import pytest
+    from backend.main import STATIC_DIR
+    if not STATIC_DIR.is_dir():
+        pytest.skip("static/ ontbreekt (frontend niet gebouwd)")
+    r = client.get("/")
+    assert r.headers.get("cache-control") == "no-cache"
+
+
 # --- DB-afhankelijk (overslaan als nep-DB niet draait) ---
 
 def test_alarms_stats(client, require_db):

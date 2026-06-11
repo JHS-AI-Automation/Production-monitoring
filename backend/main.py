@@ -55,6 +55,32 @@ def _metrics_label(path: str) -> str:
     return "static" if not path.startswith("/api/") else "api_other"
 
 
+# Security-response-headers (SEC-08). CSP: alles same-origin; 'unsafe-inline' voor styles
+# is nodig voor de inline style-attributen van Recharts en het <style>-blok in het
+# SVG-fabrieksschema. Geen externe bronnen: het dashboard draait air-gapped op de edge.
+_SECURITY_HEADERS = {
+    "Content-Security-Policy": (
+        "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; "
+        "connect-src 'self'; object-src 'none'; frame-ancestors 'none'; "
+        "base-uri 'self'; form-action 'self'"
+    ),
+    "X-Frame-Options": "DENY",
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "same-origin",
+}
+
+
+def _apply_response_headers(response, path: str) -> None:
+    """Security-headers op elke response + cache-strategie voor de SPA:
+    gehashte assets een jaar immutable, index.html (en de SPA-fallback) no-cache,
+    zodat een nieuwe deploy direct zichtbaar is ondanks trage VPN/kiosk-caching."""
+    response.headers.update(_SECURITY_HEADERS)
+    if path.startswith("/assets/"):
+        response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+    elif not path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache"
+
+
 def _auth_ok(request: Request) -> bool:
     """Valideer HTTP Basic credentials in constante tijd."""
     header = request.headers.get("Authorization", "")
@@ -160,16 +186,22 @@ async def observability_middleware(request: Request, call_next):
     try:
         # Optionele Basic Auth (env-gated). /api/health blijft vrij voor de healthcheck.
         if _AUTH_ENABLED and path not in _AUTH_EXEMPT and not _auth_ok(request):
+            duration_ms = (time.monotonic() - start) * 1000
+            # 401's tellen mee in de metrics zodat brute-force-pogingen zichtbaar zijn.
+            metrics.record(_metrics_label(path), 401, duration_ms)
             logger.warning("Auth geweigerd: %s %s", request.method, path)
-            return JSONResponse(
+            resp = JSONResponse(
                 {"detail": "Niet geautoriseerd"},
                 status_code=401,
                 headers={"WWW-Authenticate": 'Basic realm="Optimax"', "X-Request-ID": request_id},
             )
+            _apply_response_headers(resp, path)
+            return resp
         response = await call_next(request)
         duration_ms = (time.monotonic() - start) * 1000
         metrics.record(_metrics_label(path), response.status_code, duration_ms)
         response.headers["X-Request-ID"] = request_id
+        _apply_response_headers(response, path)
         if response.status_code >= 400:
             logger.warning(
                 "%s %s -> %d (%dms)",
@@ -186,6 +218,7 @@ async def observability_middleware(request: Request, call_next):
             {"detail": "Internal server error", "request_id": request_id}, status_code=500
         )
         resp.headers["X-Request-ID"] = request_id
+        _apply_response_headers(resp, path)
         return resp
     finally:
         request_id_ctx.reset(token)

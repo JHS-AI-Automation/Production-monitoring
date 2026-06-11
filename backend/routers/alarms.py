@@ -8,6 +8,12 @@ from backend.timewindow import validate_date, validate_range
 router = APIRouter(prefix="/api/alarms", tags=["alarms"])
 
 
+def escape_like(term: str) -> str:
+    """Escape LIKE/ILIKE-jokertekens in een zoekterm, zodat '%' en '_' letterlijk
+    matchen i.p.v. als wildcard (en een lange reeks '%' geen dure scan wordt)."""
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
 @router.get("/open")
 async def get_open_alarms(target_date: date = Query(default=None, alias="date")):
     """Openstaande alarmen: per alarmmessage het laatste event pakken,
@@ -125,16 +131,21 @@ async def get_alarm_list(
 
     if search:
         conditions.append(f"alarmmessage ILIKE ${idx}")
-        params.append(f"%{search.strip()}%")
+        params.append(f"%{escape_like(search.strip())}%")
         idx += 1
 
     where = " AND ".join(conditions)
-    offset = (page - 1) * per_page
 
     async with get_connection() as conn:
         count = await conn.fetchval(
             f"SELECT COUNT(*) FROM plc_alarms WHERE {where}", *params
         )
+
+        # Page clampen vóór de data-query: een te hoge page geeft de laatste pagina
+        # i.p.v. een zinloos grote OFFSET-scan over de hele tabel.
+        total_pages = max(1, -(-count // per_page))
+        clamped_page = min(page, total_pages)
+        offset = (clamped_page - 1) * per_page
 
         rows = await conn.fetch(
             f"""
@@ -148,9 +159,6 @@ async def get_alarm_list(
             per_page,
             offset,
         )
-
-    total_pages = max(1, -(-count // per_page))
-    clamped_page = min(page, total_pages)
 
     return {
         "total": count,

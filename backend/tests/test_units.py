@@ -6,8 +6,17 @@ import pytest
 from fastapi import HTTPException
 
 from backend.observability import Metrics
+from backend.routers.alarms import escape_like
 from backend.routers.chat import _sanitize_sql
 from backend.timewindow import MAX_TREND_DAYS, validate_date, validate_range
+
+
+# --- alarmlijst zoekterm-escape ---
+
+def test_escape_like_neutralizes_wildcards():
+    assert escape_like("100%_klaar") == "100\\%\\_klaar"
+    assert escape_like("pad\\naam") == "pad\\\\naam"
+    assert escape_like("gewone tekst") == "gewone tekst"
 
 
 # --- timewindow ---

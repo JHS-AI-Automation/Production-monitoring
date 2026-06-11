@@ -40,7 +40,7 @@ Bewijs: `pytest` 24 passed / 4 skipped, plus `verify_security_fixes.py` 9/9 PASS
 
 ### 1b. Ronde 2: open code-fixes
 
-- [ ] **SEC-08** `[code]` security-response-headers (CSP, X-Frame-Options, nosniff, Referrer-Policy). Dit is het laatste must-fix-code-item dat nog niet is toegepast. (TLS zelf = go-voorwaarde, zie 1c.)
+- [x] **SEC-08** `[code]` security-response-headers (CSP same-origin, X-Frame-Options DENY, nosniff, Referrer-Policy) op elke response incl. 401/500-paden (2026-06-11). Daarmee zijn alle must-fix-code-items toegepast; TLS zelf = go-voorwaarde, zie 1c.
 - [x] SEC-09 `[code]` SQL-sanitizer-hardening: CTE's toegestaan, afgedwongen buiten-LIMIT via subquery-wrap, blocklist uitgebreid (INTO/SET/COPY/DO/CALL/...), multi-statements geweigerd (2026-06-11)
 - [ ] SEC-10 `[code]` brute-force-lockout op Basic Auth
 - [ ] SEC-11 `[code/deploy]` Postgres-poort 5432 uit de prod-compose (of binden aan loopback)
@@ -112,14 +112,14 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 - [x] `[code]` Chat: outer-LIMIT afgedwongen via subquery-wrap, resultset begrensd op 1000 rijen (2026-06-11, onderdeel SEC-09)
 - [x] `[code]` Chat: CTE's (`WITH ... SELECT`) toegestaan in de sanitizer (2026-06-11, onderdeel SEC-09)
 - [ ] `[code]` Chat: conversatie-historie (laatste N berichten) meesturen naar de backend voor vervolgvragen
-- [ ] `[code]` Alarmenlijst: page clampen vóór de query + `%`/`_` escapen in de ILIKE-zoekterm
+- [x] `[code]` Alarmenlijst: page geclampt vóór de data-query (geen zinloze OFFSET-scan) + `%`/`_`/`\` ge-escaped in de ILIKE-zoekterm (2026-06-11)
 
 ### LOW (opportunistisch)
 
-- [ ] `[code]` SPA-caching: `no-cache` op index.html, `immutable` op gehashte assets (stale-deploy + trage VPN)
+- [x] `[code]` SPA-caching: `no-cache` op index.html/SPA-fallback, `immutable` (1 jaar) op gehashte assets (2026-06-11)
 - [ ] `[code]` DST-dagen: shift-minuten berekenen i.p.v. hardcoded 1080
 - [ ] `[code]` `exec` in de container-CMD voor nette SIGTERM-shutdown
-- [ ] `[code]` 401's meetellen in metrics (brute-force zichtbaar maken)
+- [x] `[code]` 401's meetellen in metrics (brute-force zichtbaar; auth-weigering werd niet geteld) (2026-06-11)
 - [ ] `[code]` `load_dotenv(override=False)` overwegen (precedence-verrassing)
 - [ ] `[code]` Chat: alle uitgevoerde SQL's tonen bij multi-query-antwoorden
 
