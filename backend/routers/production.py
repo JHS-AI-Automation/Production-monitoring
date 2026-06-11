@@ -42,7 +42,9 @@ Buiten shift wordt niet geproduceerd, stilstand alleen binnen shift geteld.
    Orphaned resolves (state=0 zonder voorafgaande state=1) worden gefilterd.
 
 6. Alarm-impact op throughput
-   Vergelijking productie per minuut tijdens alarm vs zonder alarm
+   Vergelijking productie per minuut tijdens alarm vs zonder alarm.
+   "Tijdens alarm" is het hele interval trigger -> resolve (of einde dag bij
+   onopgelost), niet alleen de trigger-minuut.
 
 7. Alarm-productie correlatie per uur
    Aantal alarmen naast totale productie per uur
@@ -332,12 +334,34 @@ async def get_alarm_impact(target_date: date = Query(default=None, alias="date")
     async with get_connection() as conn:
         # --- KPI 6: Alarm-impact op throughput ---
         # Vergelijk gemiddelde productie (producten/minuut) TIJDENS actief alarm vs ZONDER alarm.
+        # "Tijdens alarm" = het hele interval van trigger tot het eerstvolgende event van
+        # datzelfde alarm (de resolve, of een her-trigger die zijn eigen interval start);
+        # onopgeloste alarmen tellen door tot einde dag (de data zegt: nog actief).
+        # Voorheen telde alleen de trigger-MINUUT mee, waardoor een alarm dat een half uur
+        # openstond de productie-vergelijking nauwelijks raakte.
         impact = await conn.fetchrow(
             """
-            WITH alarm_minutes AS (
-                SELECT DISTINCT date_trunc('minute', time) AS minute
+            WITH events AS (
+                SELECT
+                    time,
+                    incomingstate,
+                    LEAD(time) OVER (PARTITION BY alarmmessage ORDER BY time) AS next_time
                 FROM plc_alarms
-                WHERE time >= $1::date AND time < $1::date + 1 AND incomingstate = 1
+                WHERE time >= $1::date AND time < $1::date + 1
+            ),
+            intervals AS (
+                SELECT
+                    date_trunc('minute', time) AS start_min,
+                    date_trunc('minute',
+                        COALESCE(next_time, $1::date + 1 - interval '1 minute')) AS end_min
+                FROM events
+                WHERE incomingstate = 1
+            ),
+            alarm_minutes AS (
+                SELECT DISTINCT gs.minute
+                FROM intervals
+                CROSS JOIN LATERAL
+                    generate_series(start_min, end_min, '1 minute') AS gs(minute)
             )
             SELECT
                 ROUND(AVG(CASE WHEN am.minute IS NOT NULL

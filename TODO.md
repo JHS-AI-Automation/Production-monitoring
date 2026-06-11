@@ -108,7 +108,7 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 ### MEDIUM (eerste patch na go-live)
 
 - [x] `[code]` Datagaten expliciet gerapporteerd in OEE/stilstand: `data_gap_minutes` in /summary en /oee (verwachte shift-minuten minus gemeten rijen; lopende dag naar rato) + amber-waarschuwing op de Productie-pagina. Bewust NIET als stilstand geteld: een meetgat is "logger weg", niet "lijn stond stil" (2026-06-11)
-- [ ] `[code]` Alarm-impact op alarm-intervallen (trigger tot resolve) i.p.v. alleen de trigger-minuut
+- [x] `[code]` Alarm-impact rekent nu over alarm-intervallen (trigger tot resolve via LEAD + generate_series; onopgelost telt door tot einde dag) i.p.v. alleen de trigger-minuut. Interval-SQL wordt in CI tegen echte Postgres geoefend (2026-06-11)
 - [x] `[code]` Chat: outer-LIMIT afgedwongen via subquery-wrap, resultset begrensd op 1000 rijen (2026-06-11, onderdeel SEC-09)
 - [x] `[code]` Chat: CTE's (`WITH ... SELECT`) toegestaan in de sanitizer (2026-06-11, onderdeel SEC-09)
 - [ ] `[code]` Chat: conversatie-historie (laatste N berichten) meesturen naar de backend voor vervolgvragen

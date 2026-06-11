@@ -109,6 +109,15 @@ def test_pallets_summary(client, require_db):
     assert "stations" in r.json()
 
 
+def test_alarm_impact_shape(client, require_db):
+    # Oefent de interval-CTE (LEAD + generate_series) uit tegen echte Postgres.
+    r = client.get("/api/production/alarm-impact")
+    assert r.status_code == 200
+    body = r.json()
+    assert {"avg_during_alarm", "avg_without_alarm", "alarm_minutes", "normal_minutes"} <= body.keys()
+    assert body["alarm_minutes"] >= 0
+
+
 def test_alarms_list_pagination(client, require_db):
     r = client.get("/api/alarms/list?date=2026-06-01&page=1")
     assert r.status_code == 200
