@@ -34,9 +34,13 @@ async def list_motors(days: int = Query(default=DEFAULT_DAYS, ge=14, le=180)):
 @router.get("/motors/{motor_id}/history")
 async def motor_history(motor_id: int, days: int = Query(default=DEFAULT_DAYS, ge=14, le=180)):
     """Dagelijkse start- en piekstroom van één motor + de analyse, voor de trendgrafiek."""
+    # Onbekende motor (404) is een andere fout dan bekend-maar-geen-metingen (422);
+    # één gedeelde melding zou bij echte PLC-data misleidend debuggen.
+    if not data.motor_exists(motor_id):
+        raise HTTPException(404, f"Onbekende motor {motor_id}")
     history = data.get_motor_history(motor_id, days)
     if not history:
-        raise HTTPException(404, f"Onbekende motor {motor_id}")
+        raise HTTPException(422, f"Geen productiedagen voor motor {motor_id} in de gevraagde periode")
     return {
         "motor_id": motor_id,
         "days": days,

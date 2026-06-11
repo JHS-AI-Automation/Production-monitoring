@@ -47,10 +47,22 @@ def _config(motor_id: int):
     return next((m for m in _MOTOR_CONFIG if m[0] == motor_id), None)
 
 
+def motor_exists(motor_id: int) -> bool:
+    """Bestaat deze motor? Hoort bij de naad: bij echte PLC-data wordt dit een
+    lookup op de motoren-tabel, zodat de router 404 (onbekend) kan onderscheiden
+    van 'bekend maar geen metingen in de periode'."""
+    return _config(motor_id) is not None
+
+
 def get_motor_history(motor_id: int, days: int = 60) -> list[dict]:
     """Dagelijkse start- en piekstroom voor één motor over de laatste `days` dagen
     (eindigend gisteren). Weekenden worden overgeslagen (geen productie). Deterministisch
-    per motor (seeded), zodat de demo stabiel en reproduceerbaar is."""
+    per motor (seeded), zodat de demo stabiel en reproduceerbaar is.
+
+    Let op: de rng-reeks loopt per dag-index vanaf de startdatum, en die startdatum
+    hangt af van `days`. Dezelfde kalenderdag krijgt dus andere ruis bij days=30 dan
+    bij days=60. Voor de synthetische demo is dat acceptabel; bij vervanging door
+    echte PLC-data verdwijnt dit vanzelf (echte metingen zijn gewoon echte metingen)."""
     cfg = _config(motor_id)
     if cfg is None:
         return []
@@ -61,7 +73,7 @@ def get_motor_history(motor_id: int, days: int = 60) -> list[dict]:
     rows = []
     for i in range(days):
         d = start_day + timedelta(days=i)
-        if d.weekday() >= 5:  # weekend: motor staat stil
+        if d.weekday() >= 5:  # 5=zaterdag, 6=zondag (date.weekday(): maandag=0)
             continue
         start_a = round(START_A + rng.uniform(-0.01, 0.02), 3)
         peak = BASE_PEAK_A + drift * i + rng.uniform(-0.12, 0.12)

@@ -271,9 +271,12 @@ app.include_router(alarms_router)
 app.include_router(production_router)
 app.include_router(pallets_router)
 app.include_router(chat_router)
-# Maintenance: demo op synthetische data (read-only). De frontend toont de sectie pas
-# als FEATURES.maintenance aanstaat; het endpoint zelf is onschadelijk.
-app.include_router(maintenance_router)
+# Maintenance (trunk-based feature-vlag): de code leeft op main maar de endpoints
+# bestaan alleen als MAINTENANCE_ENABLED aanstaat (env bij container-creatie).
+# Zo rijdt de feature mee met elke refactor en alle CI-tests, zonder zichtbaar te zijn.
+# Frontend-tegenhanger: FEATURES.maintenance in frontend/src/features.ts.
+if os.environ.get("MAINTENANCE_ENABLED", "").strip().lower() in ("1", "true", "yes"):
+    app.include_router(maintenance_router)
 
 
 @app.get("/api/health")

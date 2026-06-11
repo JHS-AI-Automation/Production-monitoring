@@ -82,6 +82,12 @@ def test_unknown_motor_404(client):
     assert client.get("/api/maintenance/motors/999/history").status_code == 404
 
 
+def test_days_bounds_rejected(client):
+    # De ge/le-grenzen op de days-parameter zijn een bewuste resource-grens.
+    assert client.get("/api/maintenance/motors?days=13").status_code == 422
+    assert client.get("/api/maintenance/motors?days=181").status_code == 422
+
+
 def test_signals_endpoint(client):
     r = client.get("/api/maintenance/signals")
     assert r.status_code == 200

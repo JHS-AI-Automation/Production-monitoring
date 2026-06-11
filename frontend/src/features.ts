@@ -1,7 +1,8 @@
-// Feature-vlaggen. Zet een vlag op false vóór een merge naar main als de feature
-// nog niet klant-klaar is: de bijbehorende navigatie en routes verschijnen dan niet.
+// Feature-vlaggen (trunk-based development): nieuwe features leven op main maar
+// staan UIT tot ze klant-klaar zijn. De navigatie en routes verschijnen dan niet.
+// Backend-tegenhanger: MAINTENANCE_ENABLED (env) in backend/main.py; zet beide
+// aan om de feature te zien (lokaal: vlag hier true + MAINTENANCE_ENABLED=1).
 export const FEATURES = {
-  // Maintenance-sectie (predictive maintenance op motor-stroom). Draait nu op
-  // synthetische demo-data. Aan op feature/maintenance, uit op main tot go-live.
-  maintenance: true,
+  // Maintenance-sectie (predictive maintenance op motor-stroom, synthetische demo-data).
+  maintenance: false,
 };

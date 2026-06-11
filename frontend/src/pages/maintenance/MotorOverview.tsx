@@ -21,8 +21,9 @@ export default function MotorOverview() {
   const signals = useApi<SignalsResponse>((s) => fetchSignals(DAYS, s), [], "mnt-signals");
   const { loading, error, retryAll } = combineApi(motors, signals);
 
-  const history = useApi<MotorHistory>(
-    (s) => (selected !== null ? fetchMotorHistory(selected, DAYS, s) : Promise.resolve(null as unknown as MotorHistory)),
+  // null = geen motor geselecteerd (type-eerlijk, geen cast).
+  const history = useApi<MotorHistory | null>(
+    (s) => (selected !== null ? fetchMotorHistory(selected, DAYS, s) : Promise.resolve(null)),
     [selected],
     selected !== null ? `mnt-hist-${selected}` : undefined,
   );
@@ -71,7 +72,7 @@ export default function MotorOverview() {
                       Loopt al ~{s.since_days} dagen op. Klik voor de trendgrafiek.
                     </p>
                   </div>
-                  <span className={`text-lg font-bold ${meta.text}`}>+{s.increase_pct}%</span>
+                  <span className={`text-lg font-bold ${meta.text}`}>+{s.increase_pct.toFixed(1)}%</span>
                 </div>
               );
             })}

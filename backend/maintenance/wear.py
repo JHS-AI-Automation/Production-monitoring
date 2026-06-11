@@ -13,6 +13,10 @@ WARN_PCT = 8.0        # >= dit % stijging -> let op
 ALARM_PCT = 15.0      # >= dit % stijging -> alarm
 MIN_ABS_A = 0.25      # absolute ondergrens (A), dempt ruis-alarmen
 
+# since_days meet "wanneer begon het op te lopen", niet "wanneer werd de drempel
+# overschreden": daarom telt hij terug tot de piek onder de HALVE warn-drempel zakt.
+SINCE_THRESHOLD_FACTOR = 0.5
+
 
 def _mean(xs: list[float]) -> float:
     return sum(xs) / len(xs) if xs else 0.0
@@ -26,9 +30,13 @@ def analyze_motor(history: list[dict]) -> dict | None:
         return None
 
     baseline = _mean(peaks[:WINDOW])
+    if baseline <= 0.0:
+        # Geen bruikbare basislijn (motor stond uit of meet 0): geen uitspraak.
+        # Relevant zodra echte PLC-data komt; synthetisch komt dit niet voor.
+        return None
     recent = _mean(peaks[-WINDOW:])
     increase_abs = recent - baseline
-    increase_pct = (increase_abs / baseline * 100) if baseline > 0 else 0.0
+    increase_pct = increase_abs / baseline * 100
 
     drift = increase_pct >= WARN_PCT and increase_abs >= MIN_ABS_A
     if not drift:
@@ -38,15 +46,17 @@ def analyze_motor(history: list[dict]) -> dict | None:
     else:
         status = "warn"
 
-    # Sinds wanneer loopt het op: tel terug vanaf vandaag hoeveel dagen de piek
-    # boven de (basislijn + halve drempel) bleef.
-    threshold = baseline + max(MIN_ABS_A, baseline * WARN_PCT / 100) / 2
+    # since_days alleen bij echte drift: voor een stabiele motor met een hoge
+    # basislijn zou de terugtel-drempel anders permanent "overschreden" zijn en
+    # een vers warn-signaal meteen een misleidend hoge waarde krijgen.
     since_days = 0
-    for d in reversed(history):
-        if d["peak_a"] >= threshold:
-            since_days += 1
-        else:
-            break
+    if drift:
+        threshold = baseline + max(MIN_ABS_A, baseline * WARN_PCT / 100) * SINCE_THRESHOLD_FACTOR
+        for d in reversed(history):
+            if d["peak_a"] >= threshold:
+                since_days += 1
+            else:
+                break
 
     return {
         "baseline_a": round(baseline, 3),
