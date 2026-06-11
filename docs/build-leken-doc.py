@@ -15,8 +15,10 @@ Ondersteunt een bewust kleine markdown-subset (genoeg voor dit document):
   inline: **vet** en `code`
 
 Gebruik (system python heeft docx + docx2pdf):
-  python docs/build-leken-doc.py
+  python docs/build-leken-doc.py                          # default: architectuur-voor-leken
+  python docs/build-leken-doc.py --src docs/ander-doc.md  # docx+pdf naast de bron
 """
+import argparse
 import re
 from pathlib import Path
 
@@ -31,9 +33,7 @@ REPO_ROOT = HERE.parents[4]          # .../Uland AI
 DASH = HERE.parents[1]               # .../alarm-dashboard
 LOGO = REPO_ROOT / "internal" / "assets" / "logo-dgs.png"
 
-SRC = DASH / "docs" / "optimax-architectuur-voor-leken.md"
-DST_DOCX = DASH / "docs" / "optimax-architectuur-voor-leken.docx"
-DST_PDF = DASH / "docs" / "optimax-architectuur-voor-leken.pdf"
+DEFAULT_SRC = DASH / "docs" / "optimax-architectuur-voor-leken.md"
 
 RED = RGBColor(0xED, 0x1C, 0x24)     # DGS-rood
 DARK = RGBColor(0x33, 0x33, 0x33)
@@ -290,7 +290,15 @@ def parse_and_build(md_text, doc):
 
 
 def main():
-    md = SRC.read_text(encoding="utf-8")
+    parser = argparse.ArgumentParser(description="Markdown -> DGS-docx (+pdf via Word)")
+    parser.add_argument("--src", type=Path, default=DEFAULT_SRC,
+                        help="Bron-markdown; docx en pdf komen ernaast te staan")
+    args = parser.parse_args()
+    src = args.src.resolve()
+    dst_docx = src.with_suffix(".docx")
+    dst_pdf = src.with_suffix(".pdf")
+
+    md = src.read_text(encoding="utf-8")
     doc = Document()
     style = doc.styles["Normal"]
     style.font.name = FONT
@@ -303,14 +311,14 @@ def main():
 
     parse_and_build(md, doc)
     add_page_number_footer(doc)
-    doc.save(str(DST_DOCX))
-    Document(str(DST_DOCX))  # sanity: heropenen
-    print(f"DOCX klaar: {DST_DOCX} ({DST_DOCX.stat().st_size // 1024} kB)")
+    doc.save(str(dst_docx))
+    Document(str(dst_docx))  # sanity: heropenen
+    print(f"DOCX klaar: {dst_docx} ({dst_docx.stat().st_size // 1024} kB)")
 
     try:
         from docx2pdf import convert
-        convert(str(DST_DOCX), str(DST_PDF))
-        print(f"PDF klaar:  {DST_PDF} ({DST_PDF.stat().st_size // 1024} kB)")
+        convert(str(dst_docx), str(dst_pdf))
+        print(f"PDF klaar:  {dst_pdf} ({dst_pdf.stat().st_size // 1024} kB)")
     except Exception as e:
         print(f"PDF overgeslagen ({type(e).__name__}: {e}). DOCX is wel klaar; "
               f"open hem in Word en 'Opslaan als PDF' kan altijd handmatig.")
