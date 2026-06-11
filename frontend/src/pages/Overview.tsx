@@ -18,9 +18,8 @@ import {
   type TopAlarm,
   type OeeData,
 } from "../api";
-import { useApi } from "../hooks/useApi";
+import { useApi, combineApi } from "../hooks/useApi";
 import KPICard from "../components/KPICard";
-import AlarmTable from "../components/AlarmTable";
 import DatePicker from "../components/DatePicker";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
@@ -49,8 +48,7 @@ export default function Overview() {
     `oee-${date}`,
   );
 
-  const loading = stats.loading || top.loading || oee.loading;
-  const error = stats.error || top.error || oee.error;
+  const { loading, error, retryAll } = combineApi(stats, top, oee);
   const topAlarms = top.data ?? [];
 
   const severityData = topAlarms.reduce<Record<string, number>>((acc, a) => {
@@ -74,7 +72,7 @@ export default function Overview() {
         <DatePicker value={date} onChange={setDate} />
       </div>
 
-      {error && <ErrorBanner message={error} onRetry={() => { stats.retry(); top.retry(); oee.retry(); }} />}
+      {error && <ErrorBanner message={error} onRetry={retryAll} />}
 
       {stats.data && !error && (
         <>
@@ -288,13 +286,6 @@ export default function Overview() {
         </>
       )}
 
-      {stats.data && stats.data.triggered === 0 && !error && (
-        <EmptyState message={`Geen alarmen geregistreerd op ${date}`} />
-      )}
-
-      {topAlarms.length > 0 && (
-        <AlarmTable alarms={topAlarms} title={`Top alarmen - ${date}`} />
-      )}
     </div>
   );
 }

@@ -1,33 +1,27 @@
 """
-Genereer realistische dummy data voor DGS Optimax.
+Genereer realistische dummy data voor DGS Optimax als SQL naar stdout.
 
-Vult 3 tabellen voor 7 dagen:
-  - plc_alarms: alarmen met trigger/resolve paren en MTTR
+Vult 4 tabellen (CREATE TABLE IF NOT EXISTS + INSERTs):
+  - plc_alarms (+ plc_alarms_mp1): alarmen met trigger/resolve paren en MTTR
   - capacity_perminutev2: productietellers per minuut (shift 05:00-23:00)
   - palletstatus: palletstation-statuscodes per ~1 min
 
-Gebruik:
-  1. Zet DB_HOST/DB_PORT/DB_NAME/DB_USER/DB_PASSWORD in .env (of als env vars)
-  2. pip install psycopg2-binary python-dotenv
-  3. python scripts/generate_dummy_data.py
+Gebruik (alleen stdlib, geen dependencies):
+  python scripts/generate_dummy_data.py --days 14 > seed.sql
+  docker exec -i <db-container> psql -U <user> -d db_dgs_01 < seed.sql
 
 Optioneel:
-  --days 14          Aantal dagen (default: 7)
-  --clear            Verwijder bestaande data voor de gegenereerde periode
-  --sql-only         Print SQL naar stdout i.p.v. direct inserten
+  --days 14          Aantal dagen (default: 7), weekenden worden overgeslagen
+  --clear            DELETE bestaande data voor de gegenereerde periode
+
+Voor de gepartitioneerde prod-spiegel: scripts/seed_partitioned.py (hergebruikt
+de generator-functies hieronder). Voor de Edge-demo-image: scripts/build-ixrouter-db.sh.
 """
 
 import argparse
-import os
 import random
 import sys
 from datetime import datetime, timedelta
-from pathlib import Path
-
-try:
-    from dotenv import load_dotenv
-except ImportError:
-    load_dotenv = None
 
 SHIFT_START_HOUR = 5
 SHIFT_END_HOUR = 23
@@ -287,113 +281,14 @@ CREATE TABLE IF NOT EXISTS palletstatus (
     return "\n".join(lines)
 
 
-def insert_direct(days: int, clear: bool):
-    try:
-        import psycopg2
-    except ImportError:
-        print("FOUT: pip install psycopg2-binary", file=sys.stderr)
-        sys.exit(1)
-
-    host = os.environ.get("DB_HOST", "localhost")
-    port = int(os.environ.get("DB_PORT", "5432"))
-    dbname = os.environ.get("DB_NAME", "db_dgs_01")
-    user = os.environ.get("DB_USER", "postgres")
-    password = os.environ.get("DB_PASSWORD", "")
-
-    print(f"Verbinden met {host}:{port}/{dbname} als {user}...", file=sys.stderr)
-    conn = psycopg2.connect(host=host, port=port, dbname=dbname, user=user, password=password)
-    cur = conn.cursor()
-
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS plc_alarms (
-            time TIMESTAMP NOT NULL, alarmmessage TEXT,
-            severityclass VARCHAR(20), incomingstate INTEGER
-        );
-        CREATE TABLE IF NOT EXISTS plc_alarms_mp1 (
-            time TIMESTAMP NOT NULL, alarmid SERIAL,
-            alarmmessage VARCHAR(200), severityclass VARCHAR(20),
-            incomingstate INTEGER, eventid VARCHAR(150)
-        );
-        CREATE TABLE IF NOT EXISTS capacity_perminutev2 (
-            time TIMESTAMP NOT NULL, counter0 INTEGER,
-            counter1 INTEGER, counter2 INTEGER, counter3 INTEGER
-        );
-        CREATE TABLE IF NOT EXISTS palletstatus (
-            time TIMESTAMP NOT NULL, pallet6000 INTEGER,
-            pallet6005 INTEGER, pallet6010 INTEGER, pallet6015 INTEGER
-        );
-    """)
-
-    today = datetime.now().date()
-    start_date = today - timedelta(days=days)
-    end_date = today - timedelta(days=1)
-
-    if clear:
-        print("Bestaande data verwijderen...", file=sys.stderr)
-        for tbl in ["plc_alarms", "plc_alarms_mp1", "capacity_perminutev2", "palletstatus"]:
-            cur.execute(f"DELETE FROM {tbl} WHERE time::date BETWEEN %s AND %s",
-                        (start_date, end_date))
-
-    total_rows = 0
-    for day_offset in range(days):
-        day = start_date + timedelta(days=day_offset)
-        if day.weekday() >= 5:
-            continue
-
-        wd = ['ma','di','wo','do','vr','za','zo'][day.weekday()]
-        print(f"  {day} ({wd})...", file=sys.stderr, end=" ")
-
-        alarms = generate_alarms_for_day(day)
-        for t, m, s, st in alarms:
-            cur.execute(
-                "INSERT INTO plc_alarms (time, alarmmessage, severityclass, incomingstate) "
-                "VALUES (%s, %s, %s, %s)", (t, m, s, st))
-        event_counter = day_offset * 10000
-        for j, (t, m, s, st) in enumerate(alarms):
-            cur.execute(
-                "INSERT INTO plc_alarms_mp1 (time, alarmmessage, severityclass, incomingstate, eventid) "
-                "VALUES (%s, %s, %s, %s, %s)", (t, m, s, st, f"{event_counter + j:06x}"))
-
-        capacity = generate_capacity_for_day(day)
-        for row in capacity:
-            cur.execute(
-                "INSERT INTO capacity_perminutev2 (time, counter0, counter1, counter2, counter3) "
-                "VALUES (%s, %s, %s, %s, %s)", row)
-
-        pallets = generate_pallets_for_day(day)
-        for row in pallets:
-            cur.execute(
-                "INSERT INTO palletstatus (time, pallet6000, pallet6005, pallet6010, pallet6015) "
-                "VALUES (%s, %s, %s, %s, %s)", row)
-
-        day_total = len(alarms) * 2 + len(capacity) + len(pallets)
-        total_rows += day_total
-        print(f"{day_total} rijen", file=sys.stderr)
-
-    conn.commit()
-    cur.close()
-    conn.close()
-    print(f"\nKlaar! {total_rows} rijen totaal ingevoerd.", file=sys.stderr)
-
-
 def main():
-    parser = argparse.ArgumentParser(description="DGS dummy data generator")
+    parser = argparse.ArgumentParser(description="DGS dummy data generator (SQL naar stdout)")
     parser.add_argument("--days", type=int, default=7, help="Aantal dagen (default: 7)")
     parser.add_argument("--clear", action="store_true", help="Verwijder bestaande data voor de periode")
-    parser.add_argument("--sql-only", action="store_true", help="Output SQL naar stdout")
     args = parser.parse_args()
 
-    if load_dotenv:
-        env_path = Path(__file__).resolve().parent.parent / ".env"
-        if env_path.exists():
-            load_dotenv(env_path)
-
     random.seed(42)
-
-    if args.sql_only:
-        print(generate_sql(args.days, args.clear))
-    else:
-        insert_direct(args.days, args.clear)
+    print(generate_sql(args.days, args.clear))
 
 
 if __name__ == "__main__":

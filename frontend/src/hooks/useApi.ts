@@ -28,6 +28,23 @@ export function clearCache(): void {
   cache.clear();
 }
 
+interface ApiState {
+  loading: boolean;
+  error: string | null;
+  retry: () => void;
+}
+
+/** Bundel meerdere useApi-resultaten tot één loading/error/retryAll voor een pagina.
+ *  Vervangt de per-pagina herhaalde `a.loading || b.loading` / `a.error || b.error`
+ *  / retry-bundeling. */
+export function combineApi(...results: ApiState[]) {
+  return {
+    loading: results.some((r) => r.loading),
+    error: results.find((r) => r.error)?.error ?? null,
+    retryAll: () => results.forEach((r) => r.retry()),
+  };
+}
+
 export function useApi<T>(
   fetcher: () => Promise<T>,
   deps: unknown[],

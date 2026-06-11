@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
-# Bouwt Optimax voor de IXrouter5 (ARM64/v8) met ingebakken config en pusht naar de
-# router-registry. De router kan geen env-variabelen bij het starten meegeven, dus alle
-# config wordt hier in het image gebakken via --build-arg.
+# Bouwt Optimax voor de IXrouter5/SecureEdge (ARM64/v8) en pusht naar de router-registry.
+#
+# Het image is SECRET-VRIJ: alle app-config (DB_*, OPENROUTER_API_KEY, DASHBOARD_AUTH_*,
+# CHAT_*, LOG_*) geef je op als environment-variabelen bij het aanmaken van de container
+# in het IXON-portaal. Zie DEPLOY-ixrouter.md en docker-compose.edgeapp.yml.
 #
 # Vooraf (eenmalig) op de buildmachine:
-#   - /etc/docker/daemon.json bevat:  {"insecure-registries":["<ROUTER_IP>:5000"]}
+#   - Docker Desktop: Settings > Docker Engine: {"insecure-registries":["<ROUTER_IP>:5000"]}
 #   - docker buildx beschikbaar (Docker Desktop heeft dit)
 #   - kopieer .ixrouter.env.example -> .ixrouter.env en vul in (NIET committen)
 #
@@ -17,8 +19,6 @@ ENV_FILE="${1:-.ixrouter.env}"
 set -a; . "$ENV_FILE"; set +a
 
 : "${ROUTER_IP:?ROUTER_IP ontbreekt in $ENV_FILE}"
-: "${DB_HOST:?DB_HOST ontbreekt}"; : "${DB_NAME:?DB_NAME ontbreekt}"
-: "${DB_USER:?DB_USER ontbreekt}"; : "${DB_PASSWORD:?DB_PASSWORD ontbreekt}"
 
 APP_PORT="${APP_PORT:-9000}"
 IMAGE="${ROUTER_IP}:5000/optimax:latest"
@@ -29,30 +29,16 @@ docker buildx use ixrouter5
 
 echo "Bouwen en pushen naar ${IMAGE} (linux/arm64/v8, poort ${APP_PORT})..."
 docker buildx build --platform linux/arm64/v8 \
-  --build-arg DB_HOST="$DB_HOST" \
-  --build-arg DB_PORT="${DB_PORT:-5432}" \
-  --build-arg DB_NAME="$DB_NAME" \
-  --build-arg DB_USER="$DB_USER" \
-  --build-arg DB_PASSWORD="$DB_PASSWORD" \
-  --build-arg OPENROUTER_API_KEY="${OPENROUTER_API_KEY:-}" \
-  --build-arg CHAT_MODEL="${CHAT_MODEL:-anthropic/claude-sonnet-4}" \
-  --build-arg CHAT_DB_USER="${CHAT_DB_USER:-}" \
-  --build-arg CHAT_DB_PASSWORD="${CHAT_DB_PASSWORD:-}" \
-  --build-arg CHAT_TLS_VERIFY="${CHAT_TLS_VERIFY:-true}" \
-  --build-arg CHAT_CA_BUNDLE="${CHAT_CA_BUNDLE:-}" \
-  --build-arg CHAT_DAILY_TOKEN_BUDGET="${CHAT_DAILY_TOKEN_BUDGET:-300000}" \
-  --build-arg DASHBOARD_AUTH_USER="${DASHBOARD_AUTH_USER:-}" \
-  --build-arg DASHBOARD_AUTH_PASSWORD="${DASHBOARD_AUTH_PASSWORD:-}" \
-  --build-arg LOG_FORMAT="${LOG_FORMAT:-json}" \
-  --build-arg LOG_LEVEL="${LOG_LEVEL:-INFO}" \
   --build-arg APP_PORT="$APP_PORT" \
   --build-arg INSTALL_CORP_CA="${INSTALL_CORP_CA:-0}" \
   --build-arg APP_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)" \
   -t "$IMAGE" --push .
 
 echo ""
-echo "Klaar. ${IMAGE} staat in de router-registry."
+echo "Klaar. ${IMAGE} staat in de router-registry (secret-vrij)."
 echo "Volgende stappen (zie DEPLOY-ixrouter.md):"
-echo "  1. Open de router-web-UI: http://${ROUTER_IP}:8080"
-echo "  2. Maak een container van het 'optimax'-image, koppel named volume 'optimax-logs' -> /app/logs"
-echo "  3. Open daarna het dashboard: http://${ROUTER_IP}:${APP_PORT}"
+echo "  1. Maak in het IXON-portaal een container van het 'optimax'-image."
+echo "  2. Geef daar de env-vars op: DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD,"
+echo "     DASHBOARD_AUTH_USER, DASHBOARD_AUTH_PASSWORD (en optioneel OPENROUTER_API_KEY/CHAT_*)."
+echo "  3. Poort ${APP_PORT}, netwerk machine-builder, named volume optimax-logs -> /app/logs."
+echo "  4. Open daarna het dashboard: http://${ROUTER_IP}:${APP_PORT}"

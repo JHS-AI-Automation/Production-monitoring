@@ -17,7 +17,7 @@ import {
   type PalletSummary,
   type HourlyPallet,
 } from "../api";
-import { useApi } from "../hooks/useApi";
+import { useApi, combineApi } from "../hooks/useApi";
 import DatePicker from "../components/DatePicker";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
@@ -51,8 +51,7 @@ export default function Pallets() {
     `pallet-hourly-${date}`,
   );
 
-  const loading = summary.loading || hourly.loading;
-  const error = summary.error || hourly.error;
+  const { loading, error, retryAll } = combineApi(summary, hourly);
   const s = summary.data;
   const h = hourly.data ?? [];
 
@@ -75,7 +74,7 @@ export default function Pallets() {
         <DatePicker value={date} onChange={setDate} />
       </div>
 
-      {error && <ErrorBanner message={error} onRetry={() => { summary.retry(); hourly.retry(); }} />}
+      {error && <ErrorBanner message={error} onRetry={retryAll} />}
 
       {s && !error && (
         <>

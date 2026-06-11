@@ -86,7 +86,9 @@ Twee opties, beide zonder VPN:
 - **Prod-spiegel (gepartitioneerd), poort 5434, container `dgs-db-local`** — meest representatief.
   Seeden: `python scripts/seed_partitioned.py --days 14 --clear > seed.sql` daarna
   `docker exec -i dgs-db-local psql -U dgs -d db_dgs_01 < seed.sql`.
-- **Vlakke dev-DB, poort 5433** (`docker-compose.dev.yml`) — `python scripts/generate_dummy_data.py`.
+- **Vlakke dev-DB, poort 5433** (`docker-compose.dev.yml`) — `python scripts/generate_dummy_data.py > seed.sql`
+  daarna `docker exec -i <dev-container> psql -U dgs_dev -d dgs_dev < seed.sql` (het script print
+  altijd SQL naar stdout; de directe psycopg2-insertroute is vervallen).
 
 Beide schrijven palletstatus als 100/200/300 (matcht de queries). `.env` wijst lokaal naar de
 gekozen poort (auth in de container is `trust`, dus wachtwoord-waarde maakt lokaal niet uit).
@@ -105,8 +107,9 @@ GRANT SELECT ON plc_alarms, plc_alarms_mp1, capacity_perminutev2, palletstatus T
 
 Zet daarna `CHAT_DB_USER` / `CHAT_DB_PASSWORD` in `.env`. Load-test: `python scripts/load_test.py --users 5`.
 
-> **Hoofd-DB-rol read-only (SEC-06 mitigatie).** Omdat op het IXrouter5-MVP de secrets in het
-> image gebakken zitten, moet een gelekt DB-wachtwoord zo min mogelijk schade kunnen aanrichten.
+> **Hoofd-DB-rol read-only (SEC-06 mitigatie).** Het edge-image is secret-vrij (config via
+> env-vars bij container-creatie in het IXON-portaal), maar een gelekt DB-wachtwoord moet alsnog
+> zo min mogelijk schade kunnen aanrichten.
 > Geef de hoofd-`DB_USER` daarom OOK alleen SELECT-rechten op de 4 tabellen (de app schrijft nooit):
 > ```sql
 > GRANT CONNECT ON DATABASE db_dgs_01 TO <DB_USER>;

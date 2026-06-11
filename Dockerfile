@@ -33,46 +33,15 @@ COPY --from=frontend-build /app/static ./static/
 ARG APP_COMMIT=unknown
 ENV APP_COMMIT=${APP_COMMIT}
 
-# --- Optioneel config inbakken voor platforms zonder runtime-env (bv. IXrouter5) ---
-# Defaults leeg: de normale docker-compose-build blijft ongewijzigd, want compose
-# overschrijft deze ENV bij het draaien (env_file/environment). Voor de router worden
-# ze via --build-arg gevuld (zie scripts/build-ixrouter.sh). Let op: secrets komen zo
-# in het image - bewuste tradeoff voor de MVP-router (lokale registry).
-ARG DB_HOST=""
-ARG DB_PORT=""
-ARG DB_NAME=""
-ARG DB_USER=""
-ARG DB_PASSWORD=""
-ARG OPENROUTER_API_KEY=""
-ARG CHAT_MODEL=""
-ARG CHAT_DB_USER=""
-ARG CHAT_DB_PASSWORD=""
-ARG CHAT_TLS_VERIFY=""
-ARG CHAT_CA_BUNDLE=""
-ARG CHAT_DAILY_TOKEN_BUDGET=300000
-ARG DASHBOARD_AUTH_USER=""
-ARG DASHBOARD_AUTH_PASSWORD=""
-ARG LOG_FORMAT=""
-ARG LOG_LEVEL=""
-ENV DB_HOST=${DB_HOST} \
-    DB_PORT=${DB_PORT} \
-    DB_NAME=${DB_NAME} \
-    DB_USER=${DB_USER} \
-    DB_PASSWORD=${DB_PASSWORD} \
-    OPENROUTER_API_KEY=${OPENROUTER_API_KEY} \
-    CHAT_MODEL=${CHAT_MODEL} \
-    CHAT_DB_USER=${CHAT_DB_USER} \
-    CHAT_DB_PASSWORD=${CHAT_DB_PASSWORD} \
-    CHAT_TLS_VERIFY=${CHAT_TLS_VERIFY} \
-    CHAT_CA_BUNDLE=${CHAT_CA_BUNDLE} \
-    CHAT_DAILY_TOKEN_BUDGET=${CHAT_DAILY_TOKEN_BUDGET} \
-    DASHBOARD_AUTH_USER=${DASHBOARD_AUTH_USER} \
-    DASHBOARD_AUTH_PASSWORD=${DASHBOARD_AUTH_PASSWORD} \
-    LOG_FORMAT=${LOG_FORMAT} \
-    LOG_LEVEL=${LOG_LEVEL}
+# App-config (DB_*, OPENROUTER_API_KEY, DASHBOARD_AUTH_*, CHAT_*, LOG_*) komt bij RUNTIME
+# binnen als environment-variabelen: via docker-compose (env_file/environment) of, op de
+# SecureEdge, via de env-vars die bij het aanmaken van de container in het IXON-portaal
+# worden opgegeven. Er wordt bewust NIETS ingebakken: dit image staat in een open lokale
+# registry en mag dus geen secrets bevatten (uitleesbaar via docker history/inspect).
 
 # Poort instelbaar via build-arg. De router-web-UI draait zelf op 8080; kies voor de
 # router bijv. APP_PORT=9000 om botsing te voorkomen. Default blijft 8080 (compose).
+# Runtime-override kan ook: APP_PORT als env-var bij het starten (CMD leest hem uit env).
 ARG APP_PORT=8080
 ENV APP_PORT=${APP_PORT}
 EXPOSE ${APP_PORT}

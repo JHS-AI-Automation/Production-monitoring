@@ -17,7 +17,7 @@ import {
   type HourlyProduction,
   type AlarmImpact,
 } from "../api";
-import { useApi } from "../hooks/useApi";
+import { useApi, combineApi } from "../hooks/useApi";
 import KPICard from "../components/KPICard";
 import DatePicker from "../components/DatePicker";
 import ErrorBanner from "../components/ErrorBanner";
@@ -49,8 +49,7 @@ export default function Production() {
     `prod-impact-${date}`,
   );
 
-  const loading = summary.loading || hourly.loading || impact.loading;
-  const error = summary.error || hourly.error || impact.error;
+  const { loading, error, retryAll } = combineApi(summary, hourly, impact);
   const s = summary.data;
   const h = hourly.data ?? [];
   const imp = impact.data;
@@ -70,7 +69,7 @@ export default function Production() {
         <DatePicker value={date} onChange={setDate} />
       </div>
 
-      {error && <ErrorBanner message={error} onRetry={() => { summary.retry(); hourly.retry(); impact.retry(); }} />}
+      {error && <ErrorBanner message={error} onRetry={retryAll} />}
 
       {s && !error && (
         <>

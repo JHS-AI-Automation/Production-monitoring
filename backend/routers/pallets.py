@@ -42,12 +42,22 @@ from backend.timewindow import validate_date
 
 router = APIRouter(prefix="/api/pallets", tags=["pallets"])
 
-STATIONS = [
-    {"id": "6000", "column": "pallet6000"},
-    {"id": "6005", "column": "pallet6005"},
-    {"id": "6010", "column": "pallet6010"},
-    {"id": "6015", "column": "pallet6015"},
-]
+STATIONS = ["6000", "6005", "6010", "6015"]
+
+# Statuscode per API-label (zie module-docstring): klaar / leeg-wachtend / geen pallet.
+STATUS_CODES = {"ready": 300, "empty": 200, "none": 100}
+
+
+def _pct_col(station: str, label: str, code: int) -> str:
+    """SQL-kolom: percentage meetmomenten waarin het station deze statuscode had.
+
+    Wordt uitsluitend gevuld vanuit de STATIONS/STATUS_CODES-constanten hierboven
+    (nooit user-input), dus veilig als f-string. NULLIF voorkomt deling door nul.
+    """
+    return (
+        f"ROUND(100.0 * COUNT(*) FILTER (WHERE pallet{station} = {code})"
+        f" / NULLIF(COUNT(*), 0), 1) AS s{station}_{label}_pct"
+    )
 
 
 @router.get("/summary")
@@ -55,63 +65,33 @@ async def get_pallet_summary(target_date: date = Query(default=None, alias="date
     """Dagelijkse palletstatus-samenvatting per station."""
     target_date = validate_date(target_date)
 
+    # Bezettingsgraad per station: per station x status het percentage van de dag
+    # (4 stations x 3 statussen, gegenereerd uit de constanten).
+    pct_cols = ",\n                ".join(
+        _pct_col(s, label, code)
+        for s in STATIONS
+        for label, code in STATUS_CODES.items()
+    )
+
     async with get_connection() as conn:
-        # --- Bezettingsgraad per station ---
-        # Formule per station: COUNT(*) FILTER (WHERE palletXXXX = status) / COUNT(*) * 100
-        # Dit geeft het percentage van de dag dat elk station in elke status was.
-        # Status 300 (klaar) = productief, Status 200 (leeg) = wachtend, Status 100 = onbezet
         row = await conn.fetchrow(
-            """
+            f"""
             SELECT
                 COUNT(*) AS total_readings,
-
-                -- Station 6000: bezettingspercentages
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6000 = 300)
-                    / NULLIF(COUNT(*), 0), 1) AS s6000_ready_pct,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6000 = 200)
-                    / NULLIF(COUNT(*), 0), 1) AS s6000_empty_pct,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6000 = 100)
-                    / NULLIF(COUNT(*), 0), 1) AS s6000_none_pct,
-
-                -- Station 6005: bezettingspercentages
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6005 = 300)
-                    / NULLIF(COUNT(*), 0), 1) AS s6005_ready_pct,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6005 = 200)
-                    / NULLIF(COUNT(*), 0), 1) AS s6005_empty_pct,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6005 = 100)
-                    / NULLIF(COUNT(*), 0), 1) AS s6005_none_pct,
-
-                -- Station 6010: bezettingspercentages
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6010 = 300)
-                    / NULLIF(COUNT(*), 0), 1) AS s6010_ready_pct,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6010 = 200)
-                    / NULLIF(COUNT(*), 0), 1) AS s6010_empty_pct,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6010 = 100)
-                    / NULLIF(COUNT(*), 0), 1) AS s6010_none_pct,
-
-                -- Station 6015: bezettingspercentages
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6015 = 300)
-                    / NULLIF(COUNT(*), 0), 1) AS s6015_ready_pct,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6015 = 200)
-                    / NULLIF(COUNT(*), 0), 1) AS s6015_empty_pct,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6015 = 100)
-                    / NULLIF(COUNT(*), 0), 1) AS s6015_none_pct
-
+                {pct_cols}
             FROM palletstatus
             WHERE time >= $1::date AND time < $1::date + 1
             """,
             target_date,
         )
 
-    stations = []
-    for s in STATIONS:
-        sid = s["id"]
-        stations.append({
+    stations = [
+        {
             "id": sid,
-            "ready_pct": float(row[f"s{sid}_ready_pct"] or 0),
-            "empty_pct": float(row[f"s{sid}_empty_pct"] or 0),
-            "none_pct": float(row[f"s{sid}_none_pct"] or 0),
-        })
+            **{f"{label}_pct": float(row[f"s{sid}_{label}_pct"] or 0) for label in STATUS_CODES},
+        }
+        for sid in STATIONS
+    ]
 
     return {
         "date": target_date.isoformat(),
@@ -125,23 +105,17 @@ async def get_hourly_pallet_status(target_date: date = Query(default=None, alias
     """Bezettingsgraad per station per uur (voor tijdlijn-grafiek)."""
     target_date = validate_date(target_date)
 
+    # Per uur het percentage meetmomenten met status 300 (klaar) per station.
+    ready_cols = ",\n                ".join(
+        _pct_col(s, "ready", STATUS_CODES["ready"]) for s in STATIONS
+    )
+
     async with get_connection() as conn:
-        # --- Bezettingsgraad per uur per station ---
-        # Formule: per uur het percentage meetmomenten met status = 300 (klaar)
-        # Geeft inzicht in wanneer stations productief zijn vs wachtend/onbezet
-        # NULLIF voorkomt deling door nul als er geen data in dat uur is
         rows = await conn.fetch(
-            """
+            f"""
             SELECT
                 date_trunc('hour', time) AS hour,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6000 = 300)
-                    / NULLIF(COUNT(*), 0), 1) AS s6000_ready_pct,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6005 = 300)
-                    / NULLIF(COUNT(*), 0), 1) AS s6005_ready_pct,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6010 = 300)
-                    / NULLIF(COUNT(*), 0), 1) AS s6010_ready_pct,
-                ROUND(100.0 * COUNT(*) FILTER (WHERE pallet6015 = 300)
-                    / NULLIF(COUNT(*), 0), 1) AS s6015_ready_pct
+                {ready_cols}
             FROM palletstatus
             WHERE time >= $1::date AND time < $1::date + 1
             GROUP BY date_trunc('hour', time)
@@ -153,10 +127,7 @@ async def get_hourly_pallet_status(target_date: date = Query(default=None, alias
     return [
         {
             "hour": r["hour"].strftime("%H:%M"),
-            "s6000": float(r["s6000_ready_pct"] or 0),
-            "s6005": float(r["s6005_ready_pct"] or 0),
-            "s6010": float(r["s6010_ready_pct"] or 0),
-            "s6015": float(r["s6015_ready_pct"] or 0),
+            **{f"s{sid}": float(r[f"s{sid}_ready_pct"] or 0) for sid in STATIONS},
         }
         for r in rows
     ]
