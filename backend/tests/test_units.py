@@ -47,15 +47,24 @@ def test_validate_range_caps_period():
 
 # --- chat SQL-sanitizer (defense-in-depth) ---
 
-def test_sanitize_sql_allows_select_and_adds_limit():
+def test_sanitize_sql_allows_select_and_enforces_outer_limit():
     out = _sanitize_sql("SELECT 1")
-    assert out.upper().startswith("SELECT")
-    assert "LIMIT" in out.upper()
+    assert out.upper().startswith("SELECT * FROM (")
+    assert out.endswith("LIMIT 1000")
 
 
-def test_sanitize_sql_keeps_existing_limit():
-    out = _sanitize_sql("SELECT * FROM plc_alarms LIMIT 5")
-    assert out.upper().count("LIMIT") == 1
+def test_sanitize_sql_outer_limit_caps_inner_limit():
+    # Een binnen-LIMIT van het model (hoe groot ook) wordt door de wrap op
+    # MAX_ROWS gemaximeerd; de binnen-LIMIT blijft gewoon staan.
+    out = _sanitize_sql("SELECT * FROM plc_alarms LIMIT 999999")
+    assert "LIMIT 999999" in out
+    assert out.endswith("LIMIT 1000")
+
+
+def test_sanitize_sql_allows_cte():
+    out = _sanitize_sql("WITH x AS (SELECT 1 AS n) SELECT n FROM x")
+    assert "WITH x AS" in out
+    assert out.endswith("LIMIT 1000")
 
 
 def test_sanitize_sql_rejects_non_select():
@@ -66,6 +75,20 @@ def test_sanitize_sql_rejects_non_select():
 def test_sanitize_sql_rejects_forbidden_keyword():
     with pytest.raises(ValueError):
         _sanitize_sql("SELECT 1; DROP TABLE plc_alarms")
+
+
+def test_sanitize_sql_rejects_multi_statement():
+    # Ook zonder verboden keyword zijn meerdere statements niet toegestaan.
+    with pytest.raises(ValueError):
+        _sanitize_sql("SELECT 1; SELECT 2")
+
+
+def test_sanitize_sql_rejects_select_into_and_set():
+    # SELECT ... INTO maakt een tabel aan (verkapte CREATE); SET wijzigt de sessie.
+    with pytest.raises(ValueError):
+        _sanitize_sql("SELECT * INTO evil_copy FROM plc_alarms")
+    with pytest.raises(ValueError):
+        _sanitize_sql("SET search_path TO public")
 
 
 # --- metrics ---

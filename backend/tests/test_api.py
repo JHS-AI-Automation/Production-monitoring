@@ -51,6 +51,19 @@ def test_future_date_is_rejected(client):
     assert r.status_code == 400
 
 
+def test_chat_message_too_long_is_rejected(client):
+    # Invoer-validatie (SEC-17) komt vóór de beschikbaarheidscheck van de chat,
+    # dus dit werkt ook zonder geconfigureerde OPENROUTER_API_KEY.
+    r = client.post("/api/chat", json={"message": "x" * 2001})
+    assert r.status_code == 400
+    assert "te lang" in r.json()["detail"]
+
+
+def test_chat_empty_message_is_rejected(client):
+    r = client.post("/api/chat", json={"message": "   "})
+    assert r.status_code == 400
+
+
 # --- DB-afhankelijk (overslaan als nep-DB niet draait) ---
 
 def test_alarms_stats(client, require_db):
