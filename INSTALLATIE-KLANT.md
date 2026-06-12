@@ -3,12 +3,15 @@
 Voor degene die Optimax installeert op de IXrouter5 ("de logger") bij de klant (DGS).
 Geschreven om te volgen zonder de code te kennen. Voor de gedetailleerde build-stappen:
 zie ook [DEPLOY-ixrouter.md](DEPLOY-ixrouter.md). Voor het draaien/troubleshooten: [RUNBOOK.md](RUNBOOK.md).
+Voor het volgordelijke stappenplan (R&D-demo en klant-go-live, incl. de IXON-rechten-blokkade):
+[docs/optimax-deploy-rd-en-klant.md](docs/optimax-deploy-rd-en-klant.md).
 
-> **Belangrijk om te weten vooraf.** De router kan een app bij het starten geen instellingen
-> meegeven. Daarom worden alle instellingen (database, wachtwoorden, OpenRouter-sleutel) vóór het
-> uploaden in het pakket "gebakken". Wil je later iets wijzigen (ander wachtwoord, andere
-> database), dan bouw en upload je het pakket opnieuw. Dit betekent ook: **de wachtwoorden zitten
-> in het pakket** dat op de router staat. Houd het pakket dus niet breder beschikbaar dan de router.
+> **Belangrijk om te weten vooraf.** Het app-pakket (image) is **secret-vrij**: alle instellingen
+> (database, wachtwoorden, OpenRouter-sleutel) geef je op als **environment-variabelen bij het
+> aanmaken van de container** in het IXON-beheer. Iets wijzigen (ander wachtwoord, andere database)
+> = de container verwijderen en opnieuw aanmaken met de nieuwe waarden; opnieuw bouwen is alleen
+> nodig bij nieuwe code. Dit is met opzet: de registry op het apparaat staat open op het lokale
+> netwerk, en een image is uitleesbaar; er mogen dus geen wachtwoorden in zitten.
 
 ---
 
@@ -45,7 +48,7 @@ die het dashboard mag gebruiken, gebruikt dezelfde login. Dat is bewust simpel g
 > per medewerker is een volgende stap nodig (een inlog-koppeling/SSO via een reverse-proxy). Dat staat
 > op de "nog te doen"-lijst (Deel F). Voor nu: één login die je deelt met de mensen die toegang krijgen.
 
-Zo stel je hem in (in het bestand `.ixrouter.env`, zie Deel C):
+Zo stel je hem in (als environment-variabelen bij het aanmaken van de container, zie Deel D):
 
 ```
 DASHBOARD_AUTH_USER=dgs
@@ -92,13 +95,13 @@ GRAFANA_ADMIN_PASSWORD=<sterk wachtwoord>
 
 ---
 
-## Deel C — Instellingen invullen (`.ixrouter.env`)
+## Deel C — Build-instellingen invullen (`.ixrouter.env`)
 
-Op de build-pc, in de projectmap:
+Op de build-pc, in de projectmap. Let op: dit bestand bevat alleen nog **build**-instellingen;
+de app-config en secrets geef je pas op bij het aanmaken van de container (Deel D).
 
 1. Kopieer `.ixrouter.env.example` naar `.ixrouter.env` (dit bestand wordt **niet** in git opgeslagen).
-2. Vul alle `CHANGE_ME`-waarden in: router-IP, database, OpenRouter-sleutel, de chat-rol (B-2) en de
-   dashboard-login (B-1). Het dagelijkse chat-budget staat standaard op 300.000 tokens; aanpassen mag.
+2. Vul het router-IP (en eventueel de poort) in.
 3. Bouw je achter SSL-inspectie (DGS-netwerk)? Zet `INSTALL_CORP_CA=1` en leg het bedrijfs-root-CA als
    `.crt` in de map `certs/`. Zie DEPLOY-ixrouter.md.
 
@@ -112,11 +115,14 @@ Op de build-pc, in de projectmap:
    ./scripts/build-ixrouter.sh
    ```
    (Achter SSL-inspectie: `INSTALL_CORP_CA=1 ./scripts/build-ixrouter.sh`.)
-3. Open de router-beheerpagina `http://<router-ip>:8080`, ververs, en maak een container van het
+3. Maak (met Edge App Management-rechten, of via de beheerder van het apparaat) een container van het
    `optimax`-image:
    - poort **9000**
    - named volume **`optimax-logs`** gekoppeld aan `/app/logs`
    - netwerk `machine-builder`
+   - **environment-variabelen**: hier vul je de waarden uit Deel B in (`DB_*`, `CHAT_DB_*`,
+     `OPENROUTER_API_KEY`, `DASHBOARD_AUTH_*`, `LOG_FORMAT=json`, `LOG_LEVEL=INFO`). Het dagelijkse
+     chat-budget staat standaard op 300.000 tokens (`CHAT_DAILY_TOKEN_BUDGET` om aan te passen).
 4. Start de container.
 
 ---
@@ -133,14 +139,15 @@ Op de build-pc, in de projectmap:
 
 ## Deel F — Beheer (later iets wijzigen)
 
-- **Wachtwoord of database wijzigen:** pas `.ixrouter.env` aan en draai `./scripts/build-ixrouter.sh`
-  opnieuw. Verwijder daarna de oude container in de beheerpagina en maak een nieuwe van het bijgewerkte
-  image (named volume `optimax-logs` mag je hergebruiken). Dit komt doordat de instellingen in het
-  pakket gebakken zitten.
+- **Wachtwoord of database wijzigen:** verwijder de container en maak hem opnieuw aan met de
+  aangepaste environment-variabelen (named volume `optimax-logs` hergebruiken; de logs blijven
+  bewaard). Opnieuw bouwen is niet nodig: de instellingen zitten niet in het pakket.
+- **Nieuwe code uitrollen:** wél opnieuw bouwen (`./scripts/build-ixrouter.sh`), daarna container
+  verwijderen en opnieuw aanmaken met dezelfde env-waarden.
 - **Persoon toegang geven tot het dashboard:** geef diegene de gedeelde login (B-1). (Losse accounts
   per persoon = toekomst, zie hieronder.)
 - **Persoon toegang geven tot de monitoring:** maak een account in Grafana (B-3).
-- **Chat uitzetten:** laat `OPENROUTER_API_KEY` leeg in `.ixrouter.env` en herbouw.
+- **Chat uitzetten:** maak de container opnieuw aan zonder `OPENROUTER_API_KEY`.
 
 ---
 
@@ -157,11 +164,13 @@ kosten-limieten, monitoring dicht. Wat er **nog** moet gebeuren:
 - [ ] AVG-afspraak vastleggen (proces-inzicht, niet personeelsbeoordeling).
 
 **Aanbevolen volgende code-ronde (JHS, niet blokkerend maar wel netjes vóór bredere uitrol):**
-- [ ] HTTPS (versleutelde verbinding) i.p.v. gewoon HTTP, plus beveiligings-headers.
+- [ ] HTTPS (versleutelde verbinding) i.p.v. gewoon HTTP.
+- [x] Beveiligings-headers (gedaan 2026-06-11).
 - [ ] Losse accounts per persoon voor het dashboard (inlog-koppeling/SSO via reverse-proxy) i.p.v.
       één gedeelde login.
-- [ ] Beveiliging tegen ongelimiteerd wachtwoord-raden op de login.
-- [ ] Extra dichttimmeren van de chat-SQL-controle en een paar kleinere punten.
+- [x] Beveiliging tegen ongelimiteerd wachtwoord-raden op de login (lockout, gedaan 2026-06-11).
+- [x] Extra dichttimmeren van de chat-SQL-controle (subquery-LIMIT, blocklist-uitbreiding,
+      multi-statement-weigering; gedaan 2026-06-11).
 
 > De volledige, technische lijst met onderbouwing staat in de security-review:
 > `output/dgs/alarm-dashboard-security-review-20260609.md` (in de Uland-workspace).

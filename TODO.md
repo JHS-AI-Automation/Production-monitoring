@@ -163,5 +163,6 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 - Architectuur-hercheck juni 2026 (verdict: opzet blijft, 3 kleine aanpassingen na kolom-mapping) + library-overzicht + visuele poster: [docs/optimax-architectuur-check-en-libraries.md](docs/optimax-architectuur-check-en-libraries.md) (+ docx/pdf), poster: [docs/optimax-architectuur-overzicht.png](docs/optimax-architectuur-overzicht.png) (bron-HTML ernaast, opnieuw renderen = HTML openen en screenshot op 1700px breed)
 - Besluiten: [ADR-001](ADR-001-deployment-edge-vs-cloud.md), [ADR-002](ADR-002-multi-tenant-capability-model.md), [ADR-003](ADR-003-fleet-operations.md)
 - Deploy: [DEPLOY.md](DEPLOY.md), [DEPLOY-ixrouter.md](DEPLOY-ixrouter.md), [INSTALLATIE-KLANT.md](INSTALLATIE-KLANT.md), [RUNBOOK.md](RUNBOOK.md)
+- Deploy-stappenplannen R&D-logger + klant-go-live (incl. IXON-rechten-blokkade en per-klant OpenRouter/DB-model): [docs/optimax-deploy-rd-en-klant.md](docs/optimax-deploy-rd-en-klant.md)
 - Taken: [docs/optimax-backlog.md](docs/optimax-backlog.md), [docs/optimax-stappenplan.md](docs/optimax-stappenplan.md), [docs/optimax-ixon-handover.md](docs/optimax-ixon-handover.md)
 - Security (Uland-monorepo, buiten deze repo): `output/dgs/alarm-dashboard-security-review-20260609.md`, `output/sessions/20260609-dgs-optimax-security-review/`
