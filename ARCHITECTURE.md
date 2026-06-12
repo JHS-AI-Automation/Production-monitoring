@@ -126,6 +126,8 @@ De stack is bewust klein en mainstream: geen ORM, geen state-management-library,
 
 ## 4. Deployment en infrastructuur
 
+> De afweging cloud versus edge (waarom Optimax lokaal op een edge-device draait en niet volledig in de cloud) is vastgelegd in [ADR-001](ADR-001-deployment-edge-vs-cloud.md).
+
 ### Multi-stage Docker-build
 
 De [Dockerfile](Dockerfile) bouwt in twee stages, zodat de Node-toolchain niet in het runtime-image belandt:
@@ -561,6 +563,37 @@ Beknopte ADR-stijl: de beslissing, en waarom.
 - **Tracing (OpenTelemetry):** bewust uitgesteld; het `request_id` dekt correlatie voor één service, full tracing is voor een multi-service-landschap.
 - **Redis voor cache/rate-limit:** alleen nodig bij multi-worker/multi-instance schaal; in-process is prima voor de huidige load.
 - **Gesquashte git-historie:** alles begon in één commit (2026-05-28).
+
+### Onafhankelijke architectuur-review (2026-06-10)
+
+Verse review van de volledige codebase, los van de security-review van 2026-06-09. Focus: betrouwbaarheid, KPI-correctheid en operationele gedragingen die het draaien bij een klant raken. Severity: (H)oog, (M)iddel, (L)aag.
+
+**Betrouwbaarheid en frontend (nieuw gevonden):**
+
+- **(H) Geen DB-reconnect na mislukte start.** [database.py](backend/database.py) `init_pool()` zet `_pool = None` bij een onbereikbare database en er is geen re-init-pad: de app blijft permanent zonder DB tot een handmatige container-herstart. Op het edge-device is dit reëel: na een stroomuitval starten de containers los van elkaar (geen compose-`depends_on` op de IXrouter), dus als het dashboard eerder op is dan Postgres blijft het voor altijd `unhealthy`. De graceful degradation degradeert wel, maar herstelt nooit. Fix: lazy re-init in `get_connection()`/`check_health()` (retry met backoff bij `_pool is None`).
+- **(H) Frontend-timeout en cancellation werken niet zoals gedocumenteerd.** Sectie 9 van dit document claimt "elke fetch krijgt een AbortController" en "na 15 seconden wordt afgebroken met een begrijpelijke melding". In de code is de `AbortController` in [useApi.ts](frontend/src/hooks/useApi.ts) echter **niet gekoppeld** aan de fetch: [api.ts](frontend/src/api.ts) `get()` geeft geen `signal` mee. Gevolg 1: een abort annuleert het netwerk-request niet. Gevolg 2: na de 15s-timeout staat `signal.aborted` op true, waardoor de guards in `.catch`/`.finally` juist de foutmelding én `setLoading(false)` overslaan: de pagina blijft eeuwig op "loading" staan en de time-out-melding is onbereikbare code. Dit raakt precies het doelscenario (trage VPN). Fix: `signal` doorgeven aan `fetch`, en onderscheid maken tussen abort-door-vervanging (negeren) en abort-door-timeout (fout tonen).
+- **(M) Chat-resultaat-cap beschermt tokens, niet geheugen.** [chat.py](backend/routers/chat.py) `_execute_query()` doet `conn.fetch(safe_sql)` en sliced daarna pas naar 200 rijen: de volledige resultset komt eerst in RAM. Gecombineerd met de naïeve LIMIT-detectie (`\bLIMIT\b` ergens in de query, dus een LIMIT in een subquery voorkomt de outer-LIMIT) kan één LLM-query op de 250ms-tabellen miljoenen rijen ophalen en de container tegen de `mem_limit` van 512 MB aan OOM-killen. Fix: forceer een outer-LIMIT door te wrappen (`SELECT * FROM (...) sub LIMIT 1000`) of begrens de fetch zelf (cursor/`fetch` met max rows).
+- **(M) De sanitizer weigert CTE's, ook legitieme.** `_sanitize_sql()` eist `startswith("SELECT")`, dus elke `WITH ... SELECT`-query van het LLM faalt. Dat is geen lek maar een functionele beperking die antwoordkwaliteit kost (het model krijgt een foutmelding op correcte SQL). Fix: accepteer `^\s*(SELECT|WITH)\b` en houd de forbidden-keyword-check als gate (die dekt DML binnen CTE's al af).
+
+**KPI-correctheid (nieuw gevonden, raakt de cijfers die de klant ziet):**
+
+- **(H) Inconsistente timezone-behandeling binnen de KPI-laag.** Het shift-venster in [production.py](backend/routers/production.py) filtert `time::time BETWEEN 05:00 AND 23:00` zonder TZ-conversie, terwijl piekuur/hourly/minutely `AT TIME ZONE 'Europe/Amsterdam'` gebruiken en alarm-impact weer naive `date_trunc` doet. Die drie kunnen niet alle drie kloppen: het hangt ervan af of Node-RED naive lokale tijd of UTC schrijft. Let op: `timestamp AT TIME ZONE 'Europe/Amsterdam'` op een naive kolom **interpreteert** de waarde als Amsterdam-tijd (het converteert niet vanuit UTC); voor UTC-data is het resultaat 1-2 uur fout. Daarnaast draait `date.today()` in [timewindow.py](backend/timewindow.py) op container-tijd (vermoedelijk UTC): tussen 00:00 en 02:00 NL-tijd verschuift de "gisteren"-default een dag. Actie: stel eenmalig vast in welke tijdzone de PLC-data wordt geschreven, kies één conversiestrategie voor alle queries, en zet `TZ=Europe/Amsterdam` in de container.
+- **(M) Ontbrekende minuten tellen als uptime in plaats van stilstand.** Stilstand en OEE-availability tellen `COUNT(*) FILTER (WHERE counterX = 0)` over de **aanwezige** rijen, en de noemer is `COUNT(*)`. Als de pijplijn bij een echte storing geen rijen schrijft (lijn plat, logger uit), telt die periode niet als downtime en wordt availability geflatteerd, precies wanneer het ertoe doet. Fix: genereer het shift-raster met `generate_series` en behandel ontbrekende minuten als downtime, of rapporteer datagaten expliciet.
+- **(M) "Productie tijdens alarm" meet alleen de trigger-minuut.** De alarm-impact-KPI joint op `DISTINCT date_trunc('minute', time)` van trigger-events: een alarm dat 30 minuten open staat telt 1 minuut als "tijdens alarm" en 29 als "zonder alarm". De KPI-naam belooft alarmduur-impact, de implementatie meet trigger-moment-dip. Fix: bouw alarm-intervallen (trigger tot resolve, zoals de MTTR-pairing al doet) en classificeer minuten binnen die intervallen.
+- **(L) DST-dagen:** `SHIFT_MINUTES` is hardcoded 1080; op de twee klok-verzetdagen per jaar klopt de noemer niet.
+- **(L) MTTR over middernacht:** een trigger om 23:50 met resolve na middernacht telt als unresolved vandaag en orphan morgen. Zeldzaam (shift eindigt 23:00), maar bekend gedrag.
+
+**Product en operatie (nieuw gevonden):**
+
+- **(M) De chat heeft geen conversatie-geheugen.** [Chat.tsx](frontend/src/pages/Chat.tsx) bewaart de historie alleen client-side (localStorage); `sendChatMessage()` stuurt uitsluitend het laatste bericht en de backend bouwt per request een verse conversatie. Vervolgvragen ("en de week ervoor?") missen daardoor alle context. Voor een chat-interface is dit een wezenlijke beperking; meesturen van de laatste N berichten is een kleine wijziging (let op token-budget).
+- **(M) Paginering-randgeval in de alarmenlijst.** [alarms.py](backend/routers/alarms.py) `/list` clamp't het paginanummer pas ná de query: bij `page` voorbij de laatste pagina komt een lege items-lijst terug met een geclampt paginanummer dat suggereert dat je op een geldige pagina staat. Clamp vóór de OFFSET-berekening. Daarnaast worden `%` en `_` in de zoekterm niet ge-escaped voor ILIKE (zoeken op "100%" matcht te veel).
+- **(L) SPA-caching ontbreekt.** `index.html` wordt zonder `Cache-Control: no-cache` geserveerd en de gehashte assets zonder `immutable`: na een deploy kan een browser een oude `index.html` vasthouden die naar verdwenen asset-hashes wijst (witte pagina tot harde refresh), en op de trage VPN worden assets onnodig her-gevalideerd.
+- **(L) `load_dotenv(override=True)`** in [main.py](backend/main.py) laat een `.env`-bestand winnen van door de orchestrator gezette env-vars, het omgekeerde van de gangbare precedence (en van wat het Dockerfile-commentaar belooft). `.dockerignore` sluit `.env` uit dus de container-impact is beperkt, maar het blijft een verrassing bij lokaal draaien en bij elke toekomstige mount. Overweeg `override=False`.
+- **(L) Geen `exec` in de container-CMD:** `sh -c "uvicorn ..."` kan SIGTERM bij `sh` laten hangen in plaats van bij uvicorn, waardoor een stop de 10s force-kill raakt in plaats van een nette shutdown van de pools. Fix: `exec uvicorn ...`.
+- **(L) Auth-weigeringen (401) worden niet in de metrics geteld,** alleen gelogd; brute-force-pogingen zijn daardoor onzichtbaar in `/api/metrics`.
+- **(L) Bij meerdere tool-calls toont de chat alleen de laatste SQL/resultset** aan de gebruiker; de transparantie-feature dekt multi-query-antwoorden maar half.
+
+**Onafhankelijke bevestigingen van eerdere bevindingen:** het omgekeerde counter-label in de chat-`SCHEMA_CONTEXT` (counter0 heet daar "overflow", in dit document en CLAUDE.md is het robot-output; OBS-2), het ontbreken van een wall-clock-deadline op de chat-tool-loop (SEC-29) en de naïeve LIMIT-detectie (SEC-09) zijn bij deze review zelfstandig opnieuw gevonden, wat de eerdere rapporten bevestigt. Eén correctie daarop: de CTE-"bypass" uit SEC-09 is in de huidige code geen bypass maar een weigering (zie hierboven); het LIMIT-subquery-punt staat wel.
 
 ---
 

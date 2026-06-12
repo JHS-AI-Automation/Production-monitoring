@@ -11,6 +11,8 @@ Optimax: interactief productie- en alarmdashboard voor de DGS-fabriek. Leest uit
 - **Chat** natuurlijke-taal vragen over de data (LLM vertaalt naar read-only SQL)
 
 > Voor architectuur, dataflow, pool-model en schaalbaarheid: zie [ARCHITECTURE.md](ARCHITECTURE.md).
+> Waarom Optimax lokaal op een edge-device draait en niet volledig in de cloud: zie [ADR-001](ADR-001-deployment-edge-vs-cloud.md).
+> Openstaand werk en next steps (security, productisatie, deploy): zie [TODO.md](TODO.md).
 
 ---
 
