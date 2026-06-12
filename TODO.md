@@ -3,7 +3,7 @@
 | | |
 |---|---|
 | **Doel** | Eén startpunt voor al het openstaande werk aan Optimax, met verwijzingen naar de gedetailleerde bronnen. |
-| **Laatst bijgewerkt** | 2026-06-10 |
+| **Laatst bijgewerkt** | 2026-06-12 |
 | **Status** | Werkdocument, geen klant-deliverable. |
 
 > Dit is de **index**, niet de detail-administratie. Het knoopt drie werkstromen aan elkaar: security, productisatie (multi-tenant) en productie-deploy. Per item staat waar het detail leeft. Niet hier dupliceren, bijwerken bij de bron.
@@ -125,6 +125,21 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 
 ---
 
+## Werkstroom 5: Repo-hygiene, klant-details uit de product-repo (2026-06-12)
+
+**Grote taak, verplicht VOORDAT deze repo met een klant, collaborator of derde gedeeld wordt.** Deze repo (`JHS-AI-Automation/Production-monitoring`) is de product-repo, maar bevat nu DGS-klant-specifieke informatie in getrackte docs én in de git-historie: het interne IP `192.168.23.254`, infrastructuur- en installatie-details, en deze TODO zelf (somt de security-bevindingen met SEC-nummers op). Delen in huidige staat lekt DGS-interne info plus een kaart van waar de zwakke plekken zaten.
+
+- [ ] `[beslissing]` **Scheiding bepalen**: wat is product-doc (blijft in repo: README, ARCHITECTURE, DEPLOY, RUNBOOK, ADR's) en wat is klant-/project-administratie (verhuist: backlog, stappenplan, TODO, leken-docs, onderzoeken). Richtlijn: klant-administratie naar de Uland-monorepo `projects/dgs/` of Drive.
+- [ ] `[code]` **Klant-details parametriseren** in de blijvende docs: IP's, hostnamen, DGS-specifieke netwerk- en deploy-details vervangen door placeholders of een apart (niet-getrackt) config-doc.
+- [ ] `[code]` **Project-docs verhuizen + untracken**: `git rm -r --cached` op de verhuisde bestanden + `.gitignore`-regels zodat ze er niet opnieuw in sluipen.
+- [ ] `[beslissing]` **Historie-schoning wegen**: untracken haalt niets uit de bestaande commits op GitHub. Vóór delen beslissen: historie herschrijven (`git filter-repo --path docs/ --invert-paths` + force-push + re-clone voor iedereen) of accepteren dat de historie privé blijft (alleen veilig als de repo nooit breder gedeeld wordt dan nu).
+- [ ] `[code]` **Binaries uit git**: docx/pdf/pptx niet meer tracken (diffen niet, blazen de historie op bij elke regeneratie); genereren uit de md-bron is al gescript (`docs/build-leken-doc.py`).
+- [ ] `[check]` **Secret-scan als slotcheck**: laatste pass (bv. gitleaks/trufflehog) over werkboom én historie voordat er iets gedeeld wordt. Eerdere review vond de Optimax-historie schoon op secrets, maar dat was vóór de doc-toevoegingen van juni.
+
+> Trigger: dit hoeft niet vandaag, wel vóór elke vorm van delen (Cellerland-proef, externe collaborator, klant-inzage). Tot die tijd: repo privé houden.
+
+---
+
 ## Waar beginnen (suggestie)
 
 1. **Security afronden** voor klant-go-live: SEC-08 (1b) + de vier go-voorwaarden (1c). Dit is de echte blocker.
@@ -133,6 +148,7 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 3. **Overdracht + compliance**: backlog I + J, plus Thomas-akkoord op klant-uitlevering.
 4. **Should-fix security** (rest van 1b) als eerste patch na go-live.
 5. **Productisatie laag 1** zodra klant 2 in zicht komt, daarna laag 2/3 op echte vraag.
+6. **Repo-hygiene (werkstroom 5)** vóór elke vorm van repo-deling met klant of derden.
 
 ---
 
@@ -144,6 +160,7 @@ Volledige onderbouwing met bestand-verwijzingen: [ARCHITECTURE.md](ARCHITECTURE.
 ## Bronnen-index
 
 - Architectuur: [ARCHITECTURE.md](ARCHITECTURE.md), [CLAUDE.md](CLAUDE.md)
+- Architectuur-hercheck juni 2026 (verdict: opzet blijft, 3 kleine aanpassingen na kolom-mapping) + library-overzicht + visuele poster: [docs/optimax-architectuur-check-en-libraries.md](docs/optimax-architectuur-check-en-libraries.md) (+ docx/pdf), poster: [docs/optimax-architectuur-overzicht.png](docs/optimax-architectuur-overzicht.png) (bron-HTML ernaast, opnieuw renderen = HTML openen en screenshot op 1700px breed)
 - Besluiten: [ADR-001](ADR-001-deployment-edge-vs-cloud.md), [ADR-002](ADR-002-multi-tenant-capability-model.md), [ADR-003](ADR-003-fleet-operations.md)
 - Deploy: [DEPLOY.md](DEPLOY.md), [DEPLOY-ixrouter.md](DEPLOY-ixrouter.md), [INSTALLATIE-KLANT.md](INSTALLATIE-KLANT.md), [RUNBOOK.md](RUNBOOK.md)
 - Taken: [docs/optimax-backlog.md](docs/optimax-backlog.md), [docs/optimax-stappenplan.md](docs/optimax-stappenplan.md), [docs/optimax-ixon-handover.md](docs/optimax-ixon-handover.md)

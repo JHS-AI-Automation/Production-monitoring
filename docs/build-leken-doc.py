@@ -43,6 +43,7 @@ FONT = "Calibri"
 MONO = "Consolas"
 
 INLINE_RE = re.compile(r"(\*\*.+?\*\*|`.+?`)")
+IMG_RE = re.compile(r"^!\[(.*?)\]\((.+?)\)$")
 
 
 def add_inline(paragraph, text, *, size=11, color=DARK, base_bold=False):
@@ -182,7 +183,28 @@ def heading(doc, text, level):
     r.font.color.rgb = RED if level == 1 else DARK
 
 
-def parse_and_build(md_text, doc):
+def add_image(doc, base_dir, alt, rel_path):
+    """Afbeelding gecentreerd, paginabreed (160mm past binnen de marges van 22mm)."""
+    img = (base_dir / rel_path).resolve()
+    if not img.exists():
+        print(f"WAARSCHUWING: afbeelding niet gevonden, overgeslagen: {img}")
+        return
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.space_before = Pt(6)
+    p.add_run().add_picture(str(img), width=Mm(160))
+    if alt:
+        cap = doc.add_paragraph()
+        cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        cap.paragraph_format.space_after = Pt(8)
+        r = cap.add_run(alt)
+        r.font.name = FONT
+        r.font.size = Pt(8)
+        r.font.italic = True
+        r.font.color.rgb = GREY
+
+
+def parse_and_build(md_text, doc, base_dir):
     lines = md_text.split("\n")
     # Cover: eerste "# " + eerstvolgende niet-lege alinea als subtitle.
     title, subtitle = "Document", ""
@@ -243,6 +265,13 @@ def parse_and_build(md_text, doc):
 
         if stripped == "---":
             flush_para()
+            i += 1
+            continue
+
+        img_match = IMG_RE.match(stripped)
+        if img_match:
+            flush_para()
+            add_image(doc, base_dir, img_match.group(1), img_match.group(2))
             i += 1
             continue
 
@@ -309,7 +338,7 @@ def main():
         section.left_margin = Mm(22)
         section.right_margin = Mm(22)
 
-    parse_and_build(md, doc)
+    parse_and_build(md, doc, src.parent)
     add_page_number_footer(doc)
     doc.save(str(dst_docx))
     Document(str(dst_docx))  # sanity: heropenen
