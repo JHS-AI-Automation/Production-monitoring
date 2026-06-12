@@ -22,6 +22,7 @@ import DatePicker from "../components/DatePicker";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
 import LoadingSpinner from "../components/LoadingSpinner";
+import StaleBanner from "../components/StaleBanner";
 import { yesterday } from "../lib/date";
 
 const STATION_COLORS: Record<string, string> = {
@@ -51,7 +52,7 @@ export default function Pallets() {
     `pallet-hourly-${date}`,
   );
 
-  const { loading, error, retryAll } = combineApi(summary, hourly);
+  const { loading, error, stale, refreshFailed, lastUpdated, retryAll } = combineApi(summary, hourly);
   const s = summary.data;
   const h = hourly.data ?? [];
 
@@ -75,6 +76,7 @@ export default function Pallets() {
       </div>
 
       {error && <ErrorBanner message={error} onRetry={retryAll} />}
+      <StaleBanner stale={stale} refreshFailed={refreshFailed} lastUpdated={lastUpdated} onRetry={retryAll} />
 
       {s && !error && (
         <>

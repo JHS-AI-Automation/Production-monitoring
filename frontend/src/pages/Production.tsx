@@ -23,6 +23,7 @@ import DatePicker from "../components/DatePicker";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
 import LoadingSpinner from "../components/LoadingSpinner";
+import StaleBanner from "../components/StaleBanner";
 import ProductionFlowDiagram from "../components/ProductionFlowDiagram";
 import brand from "../brand";
 import { yesterday } from "../lib/date";
@@ -49,7 +50,7 @@ export default function Production() {
     `prod-impact-${date}`,
   );
 
-  const { loading, error, retryAll } = combineApi(summary, hourly, impact);
+  const { loading, error, stale, refreshFailed, lastUpdated, retryAll } = combineApi(summary, hourly, impact);
   const s = summary.data;
   const h = hourly.data ?? [];
   const imp = impact.data;
@@ -70,6 +71,7 @@ export default function Production() {
       </div>
 
       {error && <ErrorBanner message={error} onRetry={retryAll} />}
+      <StaleBanner stale={stale} refreshFailed={refreshFailed} lastUpdated={lastUpdated} onRetry={retryAll} />
 
       {s && !error && s.data_gap_minutes > 0 && (
         <div className="rounded-lg bg-amber-50 border border-amber-200 px-4 py-2.5 text-sm text-amber-800">

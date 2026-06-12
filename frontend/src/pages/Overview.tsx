@@ -24,6 +24,7 @@ import DatePicker from "../components/DatePicker";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
 import LoadingSpinner from "../components/LoadingSpinner";
+import StaleBanner from "../components/StaleBanner";
 import brand from "../brand";
 import { yesterday } from "../lib/date";
 import { formatTime } from "../lib/format";
@@ -48,7 +49,7 @@ export default function Overview() {
     `oee-${date}`,
   );
 
-  const { loading, error, retryAll } = combineApi(stats, top, oee);
+  const { loading, error, stale, refreshFailed, lastUpdated, retryAll } = combineApi(stats, top, oee);
   const topAlarms = top.data ?? [];
 
   const severityData = topAlarms.reduce<Record<string, number>>((acc, a) => {
@@ -73,6 +74,7 @@ export default function Overview() {
       </div>
 
       {error && <ErrorBanner message={error} onRetry={retryAll} />}
+      <StaleBanner stale={stale} refreshFailed={refreshFailed} lastUpdated={lastUpdated} onRetry={retryAll} />
 
       {stats.data && !error && (
         <>

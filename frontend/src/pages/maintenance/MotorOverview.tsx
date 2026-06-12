@@ -11,6 +11,7 @@ import { statusMeta } from "./status";
 import LoadingSpinner from "../../components/LoadingSpinner";
 import ErrorBanner from "../../components/ErrorBanner";
 import EmptyState from "../../components/EmptyState";
+import StaleBanner from "../../components/StaleBanner";
 
 const DAYS = 60;
 
@@ -19,7 +20,7 @@ export default function MotorOverview() {
 
   const motors = useApi<MotorsResponse>((s) => fetchMotors(DAYS, s), [], "mnt-motors");
   const signals = useApi<SignalsResponse>((s) => fetchSignals(DAYS, s), [], "mnt-signals");
-  const { loading, error, retryAll } = combineApi(motors, signals);
+  const { loading, error, stale, refreshFailed, lastUpdated, retryAll } = combineApi(motors, signals);
 
   // null = geen motor geselecteerd (type-eerlijk, geen cast).
   const history = useApi<MotorHistory | null>(
@@ -44,6 +45,7 @@ export default function MotorOverview() {
       </div>
 
       {error && <ErrorBanner message={error} onRetry={retryAll} />}
+      <StaleBanner stale={stale} refreshFailed={refreshFailed} lastUpdated={lastUpdated} onRetry={retryAll} />
 
       {/* Onderhoudssignalen */}
       <div className="bg-white rounded-xl border border-gray-200 p-5">

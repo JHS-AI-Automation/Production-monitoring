@@ -15,6 +15,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse, PlainTextResponse, Response
 from fastapi.staticfiles import StaticFiles
 
+from backend.cache import ResponseCache
 from backend.config import Settings
 from backend.database import check_health, close_pool, init_pool, pool_stats
 from backend.observability import RequestIdFilter, metrics, request_id_ctx
@@ -200,6 +201,31 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Optimax", lifespan=lifespan)
 
+# Micro-cache + single-flight voor de lees-API (zie backend/cache.py): houdt het
+# dashboard snel als veel gebruikers tegelijk dezelfde cijfers opvragen. Alleen
+# GET's op de data-routers; /api/health, /api/version en /api/metrics blijven
+# bewust live (die moeten de actuele toestand tonen) en /api/chat is POST.
+_api_cache = ResponseCache(float(os.environ.get("API_CACHE_TTL_SECONDS", "30") or 0))
+_CACHEABLE_PREFIXES = ("/api/production", "/api/alarms", "/api/pallets", "/api/maintenance")
+
+
+async def _cached_dispatch(request: Request, path: str, call_next):
+    """GET's op data-endpoints via de micro-cache; al het andere direct doorlaten."""
+    if not (_api_cache.enabled and request.method == "GET" and path.startswith(_CACHEABLE_PREFIXES)):
+        return await call_next(request)
+
+    key = f"{path}?{request.url.query}"
+
+    async def produce():
+        upstream = await call_next(request)
+        body = b"".join([chunk async for chunk in upstream.body_iterator])
+        return (upstream.status_code, body, upstream.media_type)
+
+    (status_code, body, media_type), hit = await _api_cache.get_or_produce(key, produce)
+    response = Response(content=body, status_code=status_code, media_type=media_type)
+    response.headers["X-Cache"] = "HIT" if hit else "MISS"
+    return response
+
 
 @app.middleware("http")
 async def observability_middleware(request: Request, call_next):
@@ -240,7 +266,7 @@ async def observability_middleware(request: Request, call_next):
                 return resp
             # Succesvolle login wist de mislukte pogingen van dit IP.
             _auth_failures.pop(client_ip, None)
-        response = await call_next(request)
+        response = await _cached_dispatch(request, path, call_next)
         duration_ms = (time.monotonic() - start) * 1000
         metrics.record(_metrics_label(path), response.status_code, duration_ms)
         response.headers["X-Request-ID"] = request_id

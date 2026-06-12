@@ -19,6 +19,9 @@ os.environ.setdefault("ALLOW_NO_AUTH", "1")
 # Maintenance-endpoints zijn flag-gated (trunk-based); in tests altijd aan zodat de
 # maintenance-suite meedraait en de CI no-skip-gate niet afgaat.
 os.environ.setdefault("MAINTENANCE_ENABLED", "1")
+# API-microcache default UIT in tests: gecachte antwoorden zouden anders tussen tests
+# lekken (zelfde URL, andere gemockte data). De cache-tests zetten hem zelf gericht aan.
+os.environ.setdefault("API_CACHE_TTL_SECONDS", "0")
 
 # Repo-root op het pad zodat 'backend' importeerbaar is, ongeacht waar pytest draait.
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))

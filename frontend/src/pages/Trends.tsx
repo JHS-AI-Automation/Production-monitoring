@@ -14,6 +14,7 @@ import { useApi } from "../hooks/useApi";
 import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
 import LoadingSpinner from "../components/LoadingSpinner";
+import StaleBanner from "../components/StaleBanner";
 import { rangeEndingYesterday } from "../lib/date";
 import { formatDate } from "../lib/format";
 
@@ -27,7 +28,7 @@ export default function Trends() {
   const [days, setDays] = useState(30);
   const { from, to } = rangeEndingYesterday(days);
 
-  const { data, loading, error, retry } = useApi<TrendPoint[]>(
+  const { data, loading, error, stale, refreshFailed, lastUpdated, retry } = useApi<TrendPoint[]>(
     (signal) => fetchTrends(from, to, signal),
     [days],
     `trends-${days}`,
@@ -81,6 +82,7 @@ export default function Trends() {
       </div>
 
       {error && <ErrorBanner message={error} onRetry={retry} />}
+      <StaleBanner stale={stale} refreshFailed={refreshFailed} lastUpdated={lastUpdated} onRetry={retry} />
 
       <div className="bg-white rounded-xl border border-gray-200 p-5">
         <h2 className="text-sm font-semibold text-gray-700 mb-4">
