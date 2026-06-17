@@ -31,3 +31,7 @@ certs/*
 
 # Gegenereerde dummy-data seed (groot, regenereerbaar via build-ixrouter-db.sh)
 db/seed.sql
+
+# Interne werkmap: klant-/project-administratie (backlog, TODO, onderzoeken, klant-docs).
+# Bewust niet in git: bevat DGS-specifieke details die niet in de product-repo horen.
+docs-intern/

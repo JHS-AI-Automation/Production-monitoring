@@ -5,7 +5,7 @@
 #   192.168.23.254:5000/optimax-db:latest
 #   192.168.23.254:5000/optimax:latest
 #
-# Te installeren door iemand met IXON Edge App Management-rechten (zie docs/optimax-ixon-handover.md).
+# Te installeren door iemand met IXON Edge App Management-rechten (zie docs-intern/optimax-ixon-handover.md).
 # DEMO-data (geen echte monitoring). De services bereiken elkaar op naam binnen het
 # machine-builder-netwerk dat IXON voor Edge Apps gebruikt; daarom DB_HOST=optimax-db.
 services:

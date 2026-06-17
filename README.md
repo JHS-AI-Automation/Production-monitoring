@@ -12,7 +12,7 @@ Optimax: interactief productie- en alarmdashboard voor de DGS-fabriek. Leest uit
 
 > Voor architectuur, dataflow, pool-model en schaalbaarheid: zie [ARCHITECTURE.md](ARCHITECTURE.md).
 > Waarom Optimax lokaal op een edge-device draait en niet volledig in de cloud: zie [ADR-001](ADR-001-deployment-edge-vs-cloud.md).
-> Openstaand werk en next steps (security, productisatie, deploy): zie [TODO.md](TODO.md).
+> Openstaand werk, backlog en projectnotities: interne werkmap `docs-intern/` (lokaal, bewust niet in git).
 
 ---
 

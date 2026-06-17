@@ -4,7 +4,7 @@ Voor degene die Optimax installeert op de IXrouter5 ("de logger") bij de klant (
 Geschreven om te volgen zonder de code te kennen. Voor de gedetailleerde build-stappen:
 zie ook [DEPLOY-ixrouter.md](DEPLOY-ixrouter.md). Voor het draaien/troubleshooten: [RUNBOOK.md](RUNBOOK.md).
 Voor het volgordelijke stappenplan (R&D-demo en klant-go-live, incl. de IXON-rechten-blokkade):
-[docs/optimax-deploy-rd-en-klant.md](docs/optimax-deploy-rd-en-klant.md).
+`docs-intern/optimax-deploy-rd-en-klant.md` (interne werkmap).
 
 > **Belangrijk om te weten vooraf.** Het app-pakket (image) is **secret-vrij**: alle instellingen
 > (database, wachtwoorden, OpenRouter-sleutel) geef je op als **environment-variabelen bij het

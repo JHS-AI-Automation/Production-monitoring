@@ -85,7 +85,7 @@ Dit gebruikt `buildkitd-ixrouter5.toml` (HTTP-registry) en de waarden uit `.ixro
 
 ## Container aanmaken op de router
 
-> Dit vereist **IXON Edge App Management-rechten** (zie `docs/optimax-ixon-handover.md`).
+> Dit vereist **IXON Edge App Management-rechten** (zie `docs-intern/optimax-ixon-handover.md`).
 
 1. Maak een container van het `optimax`-image (registry `<router-ip>:5000`).
 2. Koppel een **named volume** voor de logs: naam `optimax-logs`, pad in de container `/app/logs`.

@@ -40,12 +40,21 @@ breekt partition pruning en index-gebruik). Index op `time` staat op elke partit
 - `counter2` (int): productieteller Lijn 3 (overflow, rest na robot)
 - `counter3` (int): productieteller Lijn 4 (robot legt af)
 
-  Model: lijn 1 en 4 tellen wat de robot aflegt; lijn 2 en 3 zijn de overflow die daarna overblijft.
+  Model: lijn 1 en 4 tellen wat de robot aflegt; lijn 2 en 3 zijn de overflow die daarna overblijft
+  (valt van de band naar "andere verwerking"). Volledige lijnbeschrijving: `docs-intern/optimax-domeinmodel.md`.
 
-  **Open punt:** achter de overflow zit nog een teller (na lijn 2/3) die nog uit het DB-schema
-  bepaald moet worden. In het ProductionFlowDiagram staat hiervoor een gestippeld "n.t.b."-blok.
-  Kandidaat om te onderzoeken: de tabel `capacity_detected` (bestaat in db_dgs_01, gepartitioneerd
-  per dag, nog niet gebruikt door de backend).
+  **Open punt 1 (instroom):** het HMI-hoofdscherm toont een "Erkannt"-teller = wat de camera aan de
+  invoer detecteert. Sterk vermoeden: dat is de tabel `capacity_detected` (bestaat in db_dgs_01,
+  gepartitioneerd per dag, nog niet door de backend gebruikt). Dit is de INVOER (bovenstrooms,
+  camera), niet de teller na de overflow. Het is de sleutel voor de instroom-vs-gemist-KPL:
+  `Erkannt - geplaatst(counter0+counter3) = gemist(Verpasst)`. Te verifieren tegen het DB-schema.
+
+  **Open punt 2 (na overflow):** of er een aparte teller is voor het "andere verwerking"-pad na lijn
+  2/3 is nog onbekend. In het ProductionFlowDiagram staat hiervoor een gestippeld "n.t.b."-blok.
+
+  **Let op (naamgeving):** de kolom-/sensornamen van de PLC's zijn nog niet definitief en kunnen
+  veranderen. Hardcode ze daarom niet door de hele codebase; de geplande views-laag (schema
+  `optimax`) is precies bedoeld om naam-wijzigingen op één plek op te vangen.
 
 **palletstatus** (palletposities op 4 stations)
 - `time` (timestamp): meetmoment
