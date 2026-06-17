@@ -5,4 +5,6 @@
 export const FEATURES = {
   // Maintenance-sectie (predictive maintenance op motor-stroom, synthetische demo-data).
   maintenance: false,
+  // Pallets-sectie: palletstatus hoort (nog) niet bij deze lijn. Uit tot DGS hem aanzet.
+  pallets: false,
 };

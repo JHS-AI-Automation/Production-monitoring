@@ -3,7 +3,7 @@ Genereer realistische dummy data voor DGS Optimax als SQL naar stdout.
 
 Vult 4 tabellen (CREATE TABLE IF NOT EXISTS + INSERTs):
   - plc_alarms (+ plc_alarms_mp1): alarmen met trigger/resolve paren en MTTR
-  - capacity_perminutev2: productietellers per minuut (shift 05:00-23:00)
+  - capacity: CUMULATIEVE productietellers (infeed/placedrobot1/placedrobot2, shift 05:00-23:00)
   - palletstatus: palletstation-statuscodes per ~1 min
 
 Gebruik (alleen stdlib, geen dependencies):
@@ -94,15 +94,27 @@ def generate_alarms_for_day(day: datetime.date) -> list[tuple]:
 
 
 def generate_capacity_for_day(day: datetime.date) -> list[tuple]:
-    """Genereer productietellers per minuut voor 1 dag (shift 05:00-23:00)."""
-    rows = []
-    # Lijn 1 en 4 = robot-output (hoog), lijn 2 en 3 = overflow/rest (laag),
-    # zodat het overflow-aandeel rond ~15% ligt (zichtbare groen/amber/rood-spreiding).
-    base_rates = [26, 5, 4, 20]
+    """Genereer CUMULATIEVE capacity-tellers per minuut voor 1 dag (shift 05:00-23:00).
 
-    has_downtime = [random.random() < 0.15 for _ in range(4)]
-    downtime_start = [random.randint(SHIFT_START_HOUR + 1, SHIFT_END_HOUR - 3) for _ in range(4)]
-    downtime_duration = [random.randint(15, 90) for _ in range(4)]
+    De echte PLC-tellers (infeed, placedrobot1, placedrobot2) lopen op gedurende de
+    dag. Per minuut wordt een increment opgeteld bij een lopend totaal. Tijdens
+    robot-stilstand staat die robot-teller stil (increment 0), terwijl de instroom
+    doorloopt; dat verschijnt in het dashboard als 'gemist' (overflow).
+
+    Geeft rijen (time, infeed, placedrobot1, placedrobot2) met monotoon oplopende waarden.
+    """
+    rows = []
+    # Increment per minuut bij vol tempo: robot 1 en 2 plaatsen het meeste, een klein
+    # deel van de instroom wordt gemist (~15% overflow -> zichtbare kleurspreiding).
+    base_r1, base_r2, base_miss = 26, 20, 9
+
+    has_downtime = [random.random() < 0.15 for _ in range(2)]
+    downtime_start = [random.randint(SHIFT_START_HOUR + 1, SHIFT_END_HOUR - 3) for _ in range(2)]
+    downtime_duration = [random.randint(15, 90) for _ in range(2)]
+
+    cum_infeed = 0
+    cum_r1 = 0
+    cum_r2 = 0
 
     for hour in range(SHIFT_START_HOUR, SHIFT_END_HOUR):
         hour_factor = 1.0
@@ -120,23 +132,23 @@ def generate_capacity_for_day(day: datetime.date) -> list[tuple]:
         for minute in range(60):
             t = datetime(day.year, day.month, day.day, hour, minute,
                          random.randint(0, 59), random.randint(0, 999) * 1000)
+            elapsed_min = (hour - SHIFT_START_HOUR) * 60 + minute
 
-            counters = []
-            for line in range(4):
-                elapsed_min = (hour - SHIFT_START_HOUR) * 60 + minute
-
-                if has_downtime[line]:
-                    dt_start_min = (downtime_start[line] - SHIFT_START_HOUR) * 60
-                    if dt_start_min <= elapsed_min < dt_start_min + downtime_duration[line]:
-                        counters.append(0)
-                        continue
-
-                base = base_rates[line] * hour_factor
+            inc = []
+            for r in range(2):
+                base = (base_r1 if r == 0 else base_r2) * hour_factor
+                dt_start_min = (downtime_start[r] - SHIFT_START_HOUR) * 60
+                if has_downtime[r] and dt_start_min <= elapsed_min < dt_start_min + downtime_duration[r]:
+                    inc.append(0)
+                    continue
                 noise = random.gauss(0, base * 0.15)
-                val = max(0, int(base + noise))
-                counters.append(val)
+                inc.append(max(0, int(base + noise)))
 
-            rows.append((t, *counters))
+            miss = max(0, int(base_miss * hour_factor + random.gauss(0, 2)))
+            cum_r1 += inc[0]
+            cum_r2 += inc[1]
+            cum_infeed += inc[0] + inc[1] + miss
+            rows.append((t, cum_infeed, cum_r1, cum_r2))
 
     return rows
 
@@ -179,7 +191,7 @@ def escape_sql(val) -> str:
 def generate_sql(days: int, clear: bool) -> str:
     lines = []
     lines.append("-- DGS dummy data, gegenereerd door generate_dummy_data.py")
-    lines.append("-- Tabellen: plc_alarms, capacity_perminutev2, palletstatus")
+    lines.append("-- Tabellen: plc_alarms, capacity, palletstatus")
     lines.append("")
 
     lines.append("""
@@ -199,12 +211,11 @@ CREATE TABLE IF NOT EXISTS plc_alarms_mp1 (
     eventid       VARCHAR(150)
 );
 
-CREATE TABLE IF NOT EXISTS capacity_perminutev2 (
-    time     TIMESTAMP NOT NULL,
-    counter0 INTEGER,
-    counter1 INTEGER,
-    counter2 INTEGER,
-    counter3 INTEGER
+CREATE TABLE IF NOT EXISTS capacity (
+    time         TIMESTAMP NOT NULL,
+    infeed       BIGINT,
+    placedrobot1 BIGINT,
+    placedrobot2 BIGINT
 );
 
 CREATE TABLE IF NOT EXISTS palletstatus (
@@ -223,7 +234,7 @@ CREATE TABLE IF NOT EXISTS palletstatus (
     if clear:
         lines.append(f"DELETE FROM plc_alarms WHERE time::date BETWEEN '{start_date}' AND '{end_date}';")
         lines.append(f"DELETE FROM plc_alarms_mp1 WHERE time::date BETWEEN '{start_date}' AND '{end_date}';")
-        lines.append(f"DELETE FROM capacity_perminutev2 WHERE time::date BETWEEN '{start_date}' AND '{end_date}';")
+        lines.append(f"DELETE FROM capacity WHERE time::date BETWEEN '{start_date}' AND '{end_date}';")
         lines.append(f"DELETE FROM palletstatus WHERE time::date BETWEEN '{start_date}' AND '{end_date}';")
         lines.append("")
 
@@ -257,14 +268,14 @@ CREATE TABLE IF NOT EXISTS palletstatus (
             lines.append(f"INSERT INTO plc_alarms_mp1 (time, alarmmessage, severityclass, incomingstate, eventid) VALUES\n{vals};")
 
         capacity = generate_capacity_for_day(day)
-        lines.append(f"-- capacity_perminutev2 {day} ({len(capacity)} rijen)")
+        lines.append(f"-- capacity {day} ({len(capacity)} rijen)")
         for i in range(0, len(capacity), 100):
             batch = capacity[i:i+100]
             vals = ",\n".join(
-                f"  ({escape_sql(t)}, {c0}, {c1}, {c2}, {c3})"
-                for t, c0, c1, c2, c3 in batch
+                f"  ({escape_sql(t)}, {infeed}, {r1}, {r2})"
+                for t, infeed, r1, r2 in batch
             )
-            lines.append(f"INSERT INTO capacity_perminutev2 (time, counter0, counter1, counter2, counter3) VALUES\n{vals};")
+            lines.append(f"INSERT INTO capacity (time, infeed, placedrobot1, placedrobot2) VALUES\n{vals};")
 
         pallets = generate_pallets_for_day(day)
         lines.append(f"-- palletstatus {day} ({len(pallets)} rijen)")

@@ -116,14 +116,17 @@ export async function sendChatMessage(
 
 export interface ProductionSummary {
   date: string;
-  grand_total: number;
-  per_line: number[];
+  infeed_total: number;
+  placed_total: number;
+  missed_total: number;
+  yield_pct: number | null;
+  per_robot: number[];
   downtime_minutes: number[];
   shift_minutes: number;
   data_gap_minutes: number;
   peak_hour: string | null;
   peak_hour_total: number;
-  line_balance: number | null;
+  robot_balance: number | null;
   mttr_avg_minutes: number | null;
   mttr_min_minutes: number | null;
   mttr_max_minutes: number | null;
@@ -131,22 +134,20 @@ export interface ProductionSummary {
   mttr_unresolved: number;
 }
 
-export interface HourlyProduction {
-  hour: string;
-  line_0: number;
-  line_1: number;
-  line_2: number;
-  line_3: number;
-  total: number;
+// Productiepunt: instroom + per robot + geplaatst (robot1 + robot2).
+export interface FlowPoint {
+  robot1: number;
+  robot2: number;
+  infeed: number;
+  placed: number;
 }
 
-export interface ProductionTrend {
+export interface HourlyProduction extends FlowPoint {
+  hour: string;
+}
+
+export interface ProductionTrend extends FlowPoint {
   date: string;
-  total: number;
-  line_0: number;
-  line_1: number;
-  line_2: number;
-  line_3: number;
 }
 
 export interface AlarmImpact {
@@ -163,13 +164,8 @@ export function fetchProductionSummary(date: string, signal?: AbortSignal): Prom
   return get(`/api/production/summary?date=${date}`, signal);
 }
 
-export interface MinutelyProduction {
+export interface MinutelyProduction extends FlowPoint {
   minute: string;
-  line_0: number;
-  line_1: number;
-  line_2: number;
-  line_3: number;
-  total: number;
 }
 
 export function fetchHourlyProduction(date: string, signal?: AbortSignal): Promise<HourlyProduction[]> {
@@ -188,8 +184,8 @@ export function fetchAlarmImpact(date: string, signal?: AbortSignal): Promise<Al
   return get(`/api/production/alarm-impact?date=${date}`, signal);
 }
 
-export interface OeeLineData {
-  line: number;
+export interface OeeRobotData {
+  robot: number;
   name: string;
   oee: number;
   availability: number;
@@ -220,7 +216,7 @@ export interface OeeData {
   availability: number | null;
   performance: number | null;
   quality: number;
-  per_line: OeeLineData[];
+  per_robot: OeeRobotData[];
   losses: OeeLosses | null;
   six_big_losses: OeeSixBigLoss[];
   data_gap_minutes: number;

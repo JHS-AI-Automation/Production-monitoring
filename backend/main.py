@@ -295,8 +295,14 @@ async def observability_middleware(request: Request, call_next):
 
 app.include_router(alarms_router)
 app.include_router(production_router)
-app.include_router(pallets_router)
 app.include_router(chat_router)
+# Pallets (trunk-based feature-vlag): de tabel `palletstatus` bestaat niet in het
+# huidige DB-schema, dus deze sectie is verborgen (frontend: FEATURES.pallets). De
+# endpoints worden alleen geregistreerd als PALLETS_ENABLED aanstaat, zodra de
+# palletdata terugkomt. Zo geeft een directe /api/pallets-call nu een nette 404
+# i.p.v. een 500 op een ontbrekende tabel.
+if os.environ.get("PALLETS_ENABLED", "").strip().lower() in ("1", "true", "yes"):
+    app.include_router(pallets_router)
 # Maintenance (trunk-based feature-vlag): de code leeft op main maar de endpoints
 # bestaan alleen als MAINTENANCE_ENABLED aanstaat (env bij container-creatie).
 # Zo rijdt de feature mee met elke refactor en alle CI-tests, zonder zichtbaar te zijn.

@@ -2,7 +2,7 @@
 Seed dummy-data in een GEPARTITIONEERDE DGS-database (prod-spiegel).
 
 De productie-database (en de lokale prod-spiegel `dgs-db-local`, poort 5434) gebruikt
-RANGE-partities per dag op de kolom `time`, bijv. `capacity_perminutev2_20260526`.
+RANGE-partities per dag op de kolom `time`, bijv. `capacity_20260526`.
 Het gewone `generate_dummy_data.py` maakt vlakke tabellen en past daar niet op.
 
 Dit script:
@@ -10,10 +10,9 @@ Dit script:
   - maakt per dag de ontbrekende dagpartitie aan (CREATE TABLE ... PARTITION OF ...)
   - schrijft INSERTs op de partitioned parent (Postgres routeert naar de juiste partitie)
 
-Het werkt uitsluitend met de drie tabellen die de prod-spiegel kent: plc_alarms,
-capacity_perminutev2 en palletstatus. plc_alarms krijgt alleen de kolommen die de
-backend gebruikt (time, alarmmessage, severityclass, incomingstate); alarmid/eventid
-blijven NULL.
+Het werkt met de tabellen die de prod-spiegel kent: plc_alarms, capacity (cumulatieve
+infeed/placedrobot1/placedrobot2) en palletstatus. plc_alarms krijgt de kolommen die de
+backend gebruikt; eventid wordt expliciet gevuld (NOT NULL op de prod-spiegel).
 
 Gebruik (SQL naar stdout, daarna in de container pipen):
   python scripts/seed_partitioned.py --days 14 --clear > /tmp/seed.sql
@@ -36,7 +35,7 @@ from generate_dummy_data import (
 # NOT NULL zonder default, dus die geven we expliciet mee.
 PARTITIONED_TABLES = {
     "plc_alarms": ("time", "alarmmessage", "severityclass", "incomingstate", "eventid"),
-    "capacity_perminutev2": ("time", "counter0", "counter1", "counter2", "counter3"),
+    "capacity": ("time", "infeed", "placedrobot1", "placedrobot2"),
     "palletstatus": ("time", "pallet6000", "pallet6005", "pallet6010", "pallet6015"),
 }
 
@@ -114,7 +113,7 @@ def generate_sql(days: int, end_date: datetime.date, clear: bool) -> str:
         lines += _insert_batches("plc_alarms", PARTITIONED_TABLES["plc_alarms"], alarm_rows, batch=50)
 
         capacity = generate_capacity_for_day(day)
-        lines += _insert_batches("capacity_perminutev2", PARTITIONED_TABLES["capacity_perminutev2"], capacity)
+        lines += _insert_batches("capacity", PARTITIONED_TABLES["capacity"], capacity)
 
         pallets = generate_pallets_for_day(day)
         lines += _insert_batches("palletstatus", PARTITIONED_TABLES["palletstatus"], pallets)

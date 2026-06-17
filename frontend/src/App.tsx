@@ -4,7 +4,6 @@ import Layout from "./components/Layout";
 import Overview from "./pages/Overview";
 import AlarmList from "./pages/AlarmList";
 import Production from "./pages/Production";
-import Pallets from "./pages/Pallets";
 import Trends from "./pages/Trends";
 import Chat from "./pages/Chat";
 import LoadingSpinner from "./components/LoadingSpinner";
@@ -15,6 +14,10 @@ import { FEATURES } from "./features";
 // zit de feature dus niet in de initiele bundle die gebruikers downloaden.
 const MotorOverview = lazy(() => import("./pages/maintenance/MotorOverview"));
 
+// Pallets: feature-flag uit (palletstatus hoort niet bij deze lijn). Lazy, dus
+// niet in de initiele bundle zolang de vlag uit staat. Aanzetten in features.ts.
+const Pallets = lazy(() => import("./pages/Pallets"));
+
 export default function App() {
   return (
     <Routes>
@@ -22,7 +25,16 @@ export default function App() {
         <Route path="/" element={<Overview />} />
         <Route path="/alarms" element={<AlarmList />} />
         <Route path="/production" element={<Production />} />
-        <Route path="/pallets" element={<Pallets />} />
+        {FEATURES.pallets && (
+          <Route
+            path="/pallets"
+            element={
+              <Suspense fallback={<LoadingSpinner />}>
+                <Pallets />
+              </Suspense>
+            }
+          />
+        )}
         <Route path="/trends" element={<Trends />} />
         <Route path="/chat" element={<Chat />} />
         {FEATURES.maintenance && (

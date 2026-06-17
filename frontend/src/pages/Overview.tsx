@@ -25,6 +25,7 @@ import ErrorBanner from "../components/ErrorBanner";
 import EmptyState from "../components/EmptyState";
 import LoadingSpinner from "../components/LoadingSpinner";
 import StaleBanner from "../components/StaleBanner";
+import MachineStateLegend from "../components/MachineStateLegend";
 import brand from "../brand";
 import { yesterday } from "../lib/date";
 import { formatTime } from "../lib/format";
@@ -145,21 +146,21 @@ export default function Overview() {
 
                 <div className="space-y-4">
                   <div>
-                    <h3 className="text-xs font-medium text-gray-500 mb-2">OEE per lijn</h3>
+                    <h3 className="text-xs font-medium text-gray-500 mb-2">OEE per robot</h3>
                     <div className="space-y-2">
-                      {oee.data.per_line.map((line) => (
-                        <div key={line.line} className="flex items-center gap-3">
-                          <span className="text-xs text-gray-500 w-12">{line.name}</span>
+                      {oee.data.per_robot.map((r) => (
+                        <div key={r.robot} className="flex items-center gap-3">
+                          <span className="text-xs text-gray-500 w-16">{r.name}</span>
                           <div className="flex-1 bg-gray-100 rounded-full h-5 overflow-hidden">
                             <div
                               className="h-full rounded-full transition-all"
                               style={{
-                                width: `${line.oee}%`,
-                                backgroundColor: line.oee >= 85 ? "#16a34a" : line.oee >= 65 ? "#ca8a04" : "#dc2626",
+                                width: `${r.oee}%`,
+                                backgroundColor: r.oee >= 85 ? "#16a34a" : r.oee >= 65 ? "#ca8a04" : "#dc2626",
                               }}
                             />
                           </div>
-                          <span className="text-xs font-bold text-gray-700 w-14 text-right">{line.oee}%</span>
+                          <span className="text-xs font-bold text-gray-700 w-14 text-right">{r.oee}%</span>
                         </div>
                       ))}
                     </div>
@@ -219,6 +220,8 @@ export default function Overview() {
                   )}
                 </div>
               </div>
+
+              <MachineStateLegend />
             </div>
           )}
 

@@ -8,10 +8,11 @@ const INZICHT = [
   { to: "/", label: "Overzicht", icon: LayoutDashboard },
   { to: "/alarms", label: "Alarmen", icon: List },
   { to: "/production", label: "Productie", icon: Factory },
-  { to: "/pallets", label: "Pallets", icon: Package },
+  // Pallets: feature-flag uit (hoort niet bij deze lijn). Aanzetten in features.ts.
+  ...(FEATURES.pallets ? [{ to: "/pallets", label: "Pallets", icon: Package }] : []),
   { to: "/trends", label: "Trends", icon: TrendingUp },
   { to: "/chat", label: "Chat", icon: MessageSquare },
-] as const;
+];
 
 const MAINTENANCE = [
   { to: "/maintenance", label: "Motoren", icon: Gauge },

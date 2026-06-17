@@ -13,8 +13,12 @@ interface Props {
 }
 
 const LINE_COLORS = brand.lineColors;
+const INFEED_COLOR = "#3b82f6";
+const ROBOT1_COLOR = LINE_COLORS[0];
+const ROBOT2_COLOR = LINE_COLORS[3];
 
-function redistColor(pct: number): string {
+// Kleur op basis van het gemist-percentage (instroom die niet geplaatst werd).
+function missColor(pct: number): string {
   if (pct > 20) return "#ef4444";
   if (pct > 5) return "#f59e0b";
   return "#22c55e";
@@ -28,13 +32,13 @@ function loadColor(value: number, max: number): string {
   return "#22c55e";
 }
 
-function LineBox({
+function FlowBox({
   x, y, name, tag, count, color, maxVal,
 }: {
   x: number; y: number; name: string; tag: string;
   count: number; color: string; maxVal: number;
 }) {
-  const W = 165, H = 115, barW = 140;
+  const W = 180, H = 110, barW = 156;
   const fillW = maxVal > 0
     ? Math.max((count / maxVal) * barW, count > 0 ? 6 : 0)
     : 0;
@@ -52,34 +56,33 @@ function LineBox({
         fontWeight="700" fill={color}>{name}</text>
       <text x={x + W - 12} y={y + 19} fontSize={9}
         fontWeight="500" fill="#94a3b8" textAnchor="end">{tag}</text>
-      <rect x={x + 12} y={y + 42} width={barW} height={24}
+      <rect x={x + 12} y={y + 42} width={barW} height={22}
         rx={6} fill="#f1f5f9" />
-      <rect x={x + 12} y={y + 42} width={fillW} height={24}
+      <rect x={x + 12} y={y + 42} width={fillW} height={22}
         rx={6} fill={lc} opacity={0.7}>
         <animate attributeName="width" from="0" to={fillW}
           dur="0.5s" fill="freeze" />
       </rect>
-      <text x={x + 12} y={y + 92} fontSize={18}
+      <text x={x + 12} y={y + 90} fontSize={18}
         fontWeight="700" fill="#1e293b">
         {count.toLocaleString("nl-NL")}
       </text>
-      <text x={x + 12} y={y + 106} fontSize={10} fill="#94a3b8">/uur</text>
+      <text x={x + 12} y={y + 103} fontSize={10} fill="#94a3b8">/uur</text>
     </g>
   );
 }
 
-const MINUTE_LINES = [
-  { key: "line_0" as const, name: "Lijn 1", color: LINE_COLORS[0], robot: true },
-  { key: "line_1" as const, name: "Lijn 2", color: LINE_COLORS[1], robot: false },
-  { key: "line_2" as const, name: "Lijn 3", color: LINE_COLORS[2], robot: false },
-  { key: "line_3" as const, name: "Lijn 4", color: LINE_COLORS[3], robot: true },
+const MINUTE_SERIES = [
+  { key: "infeed" as const, name: "Instroom", color: INFEED_COLOR, robot: false },
+  { key: "robot1" as const, name: "Robot 1", color: ROBOT1_COLOR, robot: true },
+  { key: "robot2" as const, name: "Robot 2", color: ROBOT2_COLOR, robot: true },
 ];
 
 function MinuteDetail({ data }: { data: MinutelyProduction[] }) {
   const [hoverIdx, setHoverIdx] = useState<number | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const allVals = MINUTE_LINES.map(l => data.map(m => m[l.key]));
+  const allVals = MINUTE_SERIES.map(l => data.map(m => m[l.key]));
   const sharedMax = Math.max(...allVals.flat(), 1);
   const labelW = 36;
   const chartW = 600;
@@ -103,7 +106,7 @@ function MinuteDetail({ data }: { data: MinutelyProduction[] }) {
     <div ref={containerRef}>
       <div className="flex items-center gap-3 mb-2 text-[10px] text-gray-400">
         <span>Max: {sharedMax.toLocaleString("nl-NL")}</span>
-        <span className="border-l border-gray-200 pl-3">Alle lijnen op dezelfde schaal</span>
+        <span className="border-l border-gray-200 pl-3">Instroom en robots op dezelfde schaal</span>
         {hoverIdx !== null && (
           <span className="ml-auto font-medium text-gray-600">
             {data[hoverIdx].minute}
@@ -111,7 +114,7 @@ function MinuteDetail({ data }: { data: MinutelyProduction[] }) {
         )}
       </div>
       <div className="space-y-3">
-        {MINUTE_LINES.map((line, li) => {
+        {MINUTE_SERIES.map((line, li) => {
           const vals = allVals[li];
           const total = vals.reduce((a, b) => a + b, 0);
           const points = vals
@@ -127,7 +130,7 @@ function MinuteDetail({ data }: { data: MinutelyProduction[] }) {
           return (
             <div key={line.key}>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-xs font-medium w-12" style={{ color: line.color }}>
+                <span className="text-xs font-medium w-16" style={{ color: line.color }}>
                   {line.name}
                 </span>
                 {line.robot && (
@@ -189,7 +192,7 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
   const [selectedHour, setSelectedHour] = useState<number | null>(null);
 
   const peak = hourlyData.reduce(
-    (best, h) => (h.total > (best?.total ?? 0) ? h : best),
+    (best, h) => (h.placed > (best?.placed ?? 0) ? h : best),
     hourlyData[0],
   );
   const activeHourStr = selectedHour !== null
@@ -207,16 +210,15 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
 
   if (!d) return null;
 
-  // Model: de robot legt af op lijn 1 en 4 (robot-output). Wat daarna overblijft
-  // is de overflow op lijn 2 en 3. Een hoog overflow-percentage = de robot kan het
-  // aanbod niet bijhouden.
-  const overflow = d.line_1 + d.line_2;
-  const overflowPct = d.total > 0 ? (overflow / d.total) * 100 : 0;
-  const maxLine = Math.max(d.line_0, d.line_1, d.line_2, d.line_3, 1);
-  const hasOverflow = overflow > 0;
-  const arrowCol = redistColor(overflowPct);
-  const arrowW = overflowPct > 20 ? 3.5 : 2.5;
-  const markerName = overflowPct > 20 ? "red" : overflowPct > 5 ? "amber" : "green";
+  // Model: de camera detecteert de instroom (infeed); robot 1 en 2 plaatsen samen
+  // het geplaatste deel. Wat niet geplaatst wordt is "gemist" (overflow). Een hoog
+  // gemist-percentage = de robots houden de aanvoer niet bij.
+  const gemist = Math.max(0, d.infeed - d.placed);
+  const gemistPct = d.infeed > 0 ? (gemist / d.infeed) * 100 : 0;
+  const maxVal = Math.max(d.infeed, d.robot1, d.robot2, d.placed, 1);
+  const arrowCol = missColor(gemistPct);
+  const arrowW = gemistPct > 20 ? 3.5 : 2.5;
+  const markerName = gemistPct > 20 ? "red" : gemistPct > 5 ? "amber" : "green";
 
   const shiftHours = hourlyData.filter(h => {
     const hr = parseInt(h.hour);
@@ -227,132 +229,83 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
     <div className="bg-white rounded-xl border border-gray-200 p-5">
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-sm font-semibold text-gray-700">
-          Lijnverdeling{" "}
+          Productiestroom{" "}
           <span className="font-normal text-gray-400">
             {selectedHour !== null
               ? `${String(selectedHour).padStart(2, "0")}:00`
               : `piekuur (${peak?.hour ?? "-"})`}
           </span>
         </h2>
-        {overflowPct > 0 && (
+        {d.infeed > 0 && (
           <span
             className={`text-xs font-semibold px-2.5 py-1 rounded-full ${
-              overflowPct > 20
+              gemistPct > 20
                 ? "bg-red-50 text-red-600 ring-1 ring-red-200"
-                : overflowPct > 5
+                : gemistPct > 5
                   ? "bg-amber-50 text-amber-600 ring-1 ring-amber-200"
                   : "bg-green-50 text-green-600 ring-1 ring-green-200"
             }`}
           >
-            {overflowPct.toFixed(0)}% overflow naar lijn 2 en 3
+            {gemistPct.toFixed(0)}% gemist (rendement {(100 - gemistPct).toFixed(0)}%)
           </span>
         )}
       </div>
 
-      {/* Factory Schematic */}
-      <svg viewBox="0 0 820 410" className="w-full mx-auto" style={{ maxWidth: 760 }}>
+      {/* Factory Schematic: instroom -> 2 robots -> geplaatst, met gemist als lek */}
+      <svg viewBox="0 0 760 410" className="w-full mx-auto" style={{ maxWidth: 720 }}>
         <defs>
           <style>{`
             @keyframes dash{from{stroke-dashoffset:16}to{stroke-dashoffset:0}}
             .flow{animation:dash .7s linear infinite}
           `}</style>
-          <marker id="a-gray" markerWidth="8" markerHeight="6"
-            refX="7" refY="3" orient="auto">
+          <marker id="a-gray" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
             <polygon points="0 0,8 3,0 6" fill="#cbd5e1" />
           </marker>
-          <marker id="a-green" markerWidth="8" markerHeight="6"
-            refX="7" refY="3" orient="auto">
+          <marker id="a-green" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
             <polygon points="0 0,8 3,0 6" fill="#22c55e" />
           </marker>
-          <marker id="a-amber" markerWidth="8" markerHeight="6"
-            refX="7" refY="3" orient="auto">
+          <marker id="a-amber" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
             <polygon points="0 0,8 3,0 6" fill="#f59e0b" />
           </marker>
-          <marker id="a-red" markerWidth="8" markerHeight="6"
-            refX="7" refY="3" orient="auto">
+          <marker id="a-red" markerWidth="8" markerHeight="6" refX="7" refY="3" orient="auto">
             <polygon points="0 0,8 3,0 6" fill="#ef4444" />
           </marker>
         </defs>
 
-        {/* === INVOER (boven): lijn 2 en 3 voeren de robots === */}
-        <text x={410} y={12} textAnchor="middle" fontSize={10} fontWeight="600"
-          fill="#94a3b8" style={{ letterSpacing: "0.08em" }}>INVOER</text>
-        <rect x={235} y={20} width={150} height={34} rx={8} fill="#f8fafc" stroke="#e2e8f0" />
-        <text x={310} y={41} textAnchor="middle" fontSize={11} fontWeight="600" fill="#64748b">Lijn 2</text>
-        <rect x={435} y={20} width={150} height={34} rx={8} fill="#f8fafc" stroke="#e2e8f0" />
-        <text x={510} y={41} textAnchor="middle" fontSize={11} fontWeight="600" fill="#64748b">Lijn 3</text>
-        <path d="M 310 54 L 310 92" fill="none" stroke="#cbd5e1" strokeWidth={2} markerEnd="url(#a-gray)" />
-        <path d="M 510 54 L 510 92" fill="none" stroke="#cbd5e1" strokeWidth={2} markerEnd="url(#a-gray)" />
-
-        {/* === ROBOTS (midden): robot 1 en 2, beide leggen af op lijn 1 en 4 === */}
-        <rect x={235} y={94} width={350} height={96} rx={12}
-          fill="#f8fafc" stroke="#e2e8f0" strokeWidth={1.5} />
-        <text x={410} y={113} textAnchor="middle" fontSize={11} fontWeight="600"
-          fill="#475569" style={{ letterSpacing: "0.06em" }}>ROBOTARMEN</text>
-        <g transform="translate(296, 122)">
-          <rect x={0} y={0} width={28} height={28} rx={4} fill="#e2e8f0" />
-          <path d="M6 22 L6 12 L14 6 L22 12 L22 22" stroke="#475569" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx={14} cy={12} r={3} fill="#475569" />
-          <path d="M10 22 L10 17 L18 17 L18 22" stroke="#475569" strokeWidth={1.5} fill="none" />
-        </g>
-        <text x={310} y={166} textAnchor="middle" fontSize={10} fill="#64748b">Robot 1</text>
-        <g transform="translate(496, 122)">
-          <rect x={0} y={0} width={28} height={28} rx={4} fill="#e2e8f0" />
-          <path d="M6 22 L6 12 L14 6 L22 12 L22 22" stroke="#475569" strokeWidth={2} fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          <circle cx={14} cy={12} r={3} fill="#475569" />
-          <path d="M10 22 L10 17 L18 17 L18 22" stroke="#475569" strokeWidth={1.5} fill="none" />
-        </g>
-        <text x={510} y={166} textAnchor="middle" fontSize={10} fill="#64748b">Robot 2</text>
-        <text x={410} y={183} textAnchor="middle" fontSize={9} fill="#94a3b8">
-          beide leggen af op lijn 1 en 4
-        </text>
-
-        {/* === ROBOT-OUTPUT (zijkanten): lijn 1 links, lijn 4 rechts === */}
-        <LineBox x={20} y={95} name="Lijn 1" tag="ROBOT"
-          count={d.line_0} color={LINE_COLORS[0]} maxVal={maxLine} />
-        <LineBox x={635} y={95} name="Lijn 4" tag="ROBOT"
-          count={d.line_3} color={LINE_COLORS[3]} maxVal={maxLine} />
-        {d.line_0 > 0 && (
-          <path d="M 235 142 L 188 142"
-            fill="none" stroke="#22c55e" strokeWidth={2.5} markerEnd="url(#a-green)" />
-        )}
-        {d.line_3 > 0 && (
-          <path d="M 585 142 L 632 142"
-            fill="none" stroke="#22c55e" strokeWidth={2.5} markerEnd="url(#a-green)" />
-        )}
-
-        {/* === OVERFLOW (onder): rest na de robot op lijn 2 en 3 === */}
-        <LineBox x={228} y={215} name="Lijn 2" tag="OVERFLOW"
-          count={d.line_1} color={LINE_COLORS[1]} maxVal={maxLine} />
-        <LineBox x={428} y={215} name="Lijn 3" tag="OVERFLOW"
-          count={d.line_2} color={LINE_COLORS[2]} maxVal={maxLine} />
-        {hasOverflow && d.line_1 > 0 && (
-          <path d="M 310 190 L 310 213"
-            fill="none" stroke={arrowCol} strokeWidth={arrowW}
-            strokeDasharray="10 6" className="flow" markerEnd={`url(#a-${markerName})`} />
-        )}
-        {hasOverflow && d.line_2 > 0 && (
-          <path d="M 510 190 L 510 213"
-            fill="none" stroke={arrowCol} strokeWidth={arrowW}
+        {/* === INSTROOM (boven) === */}
+        <text x={290} y={12} textAnchor="middle" fontSize={10} fontWeight="600"
+          fill="#94a3b8" style={{ letterSpacing: "0.08em" }}>INSTROOM (CAMERA)</text>
+        <FlowBox x={200} y={18} name="Instroom" tag="ERKANNT"
+          count={d.infeed} color={INFEED_COLOR} maxVal={maxVal} />
+        {/* Splitsing naar de twee robots */}
+        <path d="M 250 130 L 130 168" fill="none" stroke="#cbd5e1" strokeWidth={2} markerEnd="url(#a-gray)" />
+        <path d="M 330 130 L 450 168" fill="none" stroke="#cbd5e1" strokeWidth={2} markerEnd="url(#a-gray)" />
+        {/* Lek naar gemist (rechts) */}
+        {gemist > 0 && (
+          <path d="M 380 73 L 560 73" fill="none" stroke={arrowCol} strokeWidth={arrowW}
             strokeDasharray="10 6" className="flow" markerEnd={`url(#a-${markerName})`} />
         )}
 
-        {/* === NA OVERFLOW: downstream-teller, nog te bepalen uit het DB-schema === */}
-        <path d="M 310 330 L 388 354"
-          fill="none" stroke="#cbd5e1" strokeWidth={2}
-          strokeDasharray="4 3" markerEnd="url(#a-gray)" />
-        <path d="M 510 330 L 432 354"
-          fill="none" stroke="#cbd5e1" strokeWidth={2}
-          strokeDasharray="4 3" markerEnd="url(#a-gray)" />
-        <rect x={300} y={356} width={220} height={42} rx={10}
-          fill="none" stroke="#cbd5e1" strokeWidth={1.5} strokeDasharray="5 4" />
-        <text x={410} y={373} textAnchor="middle" fontSize={10}
-          fontWeight="600" fill="#94a3b8" style={{ letterSpacing: "0.06em" }}>
-          NA OVERFLOW
+        {/* === ROBOTS (midden) === */}
+        <FlowBox x={40} y={170} name="Robot 1" tag="PLAATST"
+          count={d.robot1} color={ROBOT1_COLOR} maxVal={maxVal} />
+        <FlowBox x={360} y={170} name="Robot 2" tag="PLAATST"
+          count={d.robot2} color={ROBOT2_COLOR} maxVal={maxVal} />
+
+        {/* === GEMIST (rechtsboven) === */}
+        <rect x={560} y={40} width={160} height={66} rx={10}
+          fill="none" stroke={arrowCol} strokeWidth={1.5} strokeDasharray="5 4" />
+        <text x={640} y={62} textAnchor="middle" fontSize={10} fontWeight="600"
+          fill="#94a3b8" style={{ letterSpacing: "0.06em" }}>GEMIST (OVERFLOW)</text>
+        <text x={640} y={88} textAnchor="middle" fontSize={18} fontWeight="700" fill={arrowCol}>
+          {gemist.toLocaleString("nl-NL")}
         </text>
-        <text x={410} y={388} textAnchor="middle" fontSize={9} fill="#94a3b8">
-          counter nog te bepalen (uit DB-schema)
-        </text>
+
+        {/* === GEPLAATST (onder) === */}
+        <path d="M 130 280 L 250 320" fill="none" stroke="#22c55e" strokeWidth={2.5} markerEnd="url(#a-green)" />
+        <path d="M 450 280 L 330 320" fill="none" stroke="#22c55e" strokeWidth={2.5} markerEnd="url(#a-green)" />
+        <FlowBox x={200} y={300} name="Geplaatst" tag="ROBOT-OUTPUT"
+          count={d.placed} color="#16a34a" maxVal={maxVal} />
       </svg>
 
       {/* Hourly Timeline */}
@@ -363,8 +316,8 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
         <div className="flex gap-1">
           {shiftHours.map((h) => {
             const hr = parseInt(h.hour);
-            const ov = h.line_1 + h.line_2;
-            const pct = h.total > 0 ? (ov / h.total) * 100 : 0;
+            const g = Math.max(0, h.infeed - h.placed);
+            const pct = h.infeed > 0 ? (g / h.infeed) * 100 : 0;
             const sel = hr === selectedHour;
             const isPeak = h.hour === peak?.hour && selectedHour === null;
             return (
@@ -377,12 +330,12 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
                 `}
                 style={{
                   backgroundColor:
-                    h.total === 0 ? "#f9fafb" : `${redistColor(pct)}18`,
+                    h.placed === 0 && h.infeed === 0 ? "#f9fafb" : `${missColor(pct)}18`,
                   borderBottom:
-                    h.total > 0
-                      ? `3px solid ${redistColor(pct)}`
+                    h.placed > 0 || h.infeed > 0
+                      ? `3px solid ${missColor(pct)}`
                       : "3px solid #e5e7eb",
-                  color: h.total === 0 ? "#d1d5db" : "#374151",
+                  color: h.placed === 0 && h.infeed === 0 ? "#d1d5db" : "#374151",
                 }}
               >
                 {String(hr).padStart(2, "0")}
@@ -393,15 +346,15 @@ export default function ProductionFlowDiagram({ hourlyData, date }: Props) {
         <div className="flex gap-4 mt-2 text-[10px] text-gray-400">
           <span className="flex items-center gap-1">
             <span className="inline-block w-3 h-2 rounded-sm bg-green-500 opacity-40" />
-            normaal
+            weinig gemist
           </span>
           <span className="flex items-center gap-1">
             <span className="inline-block w-3 h-2 rounded-sm bg-amber-500 opacity-40" />
-            wat overflow
+            wat gemist
           </span>
           <span className="flex items-center gap-1">
             <span className="inline-block w-3 h-2 rounded-sm bg-red-500 opacity-40" />
-            veel overflow
+            veel gemist
           </span>
         </div>
       </div>

@@ -124,15 +124,10 @@ def test_production_summary(client, require_db):
     r = client.get("/api/production/summary?date=2026-06-01")
     assert r.status_code == 200
     body = r.json()
-    assert "per_line" in body
+    assert "per_robot" in body
+    assert {"infeed_total", "placed_total", "missed_total"} <= body.keys()
     assert "data_gap_minutes" in body
     assert body["data_gap_minutes"] >= 0
-
-
-def test_pallets_summary(client, require_db):
-    r = client.get("/api/pallets/summary?date=2026-06-01")
-    assert r.status_code == 200
-    assert "stations" in r.json()
 
 
 def test_alarm_impact_shape(client, require_db):

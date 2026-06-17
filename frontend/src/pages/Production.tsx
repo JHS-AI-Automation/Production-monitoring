@@ -29,7 +29,9 @@ import brand from "../brand";
 import { yesterday } from "../lib/date";
 
 const LINE_COLORS = brand.lineColors;
-const LINE_NAMES = ["Lijn 1", "Lijn 2", "Lijn 3", "Lijn 4"];
+// Twee robots i.p.v. vier lijnen; kleuren hergebruikt van de oude robot-output-lijnen.
+const ROBOT_NAMES = ["Robot 1", "Robot 2"];
+const ROBOT_COLORS = [LINE_COLORS[0], LINE_COLORS[3]];
 
 export default function Production() {
   const [date, setDate] = useState(yesterday);
@@ -60,7 +62,7 @@ export default function Production() {
   }
 
   const avgDowntime = s
-    ? Math.round(s.downtime_minutes.reduce((a, b) => a + b, 0) / 4)
+    ? Math.round(s.downtime_minutes.reduce((a, b) => a + b, 0) / s.downtime_minutes.length)
     : 0;
 
   return (
@@ -83,33 +85,34 @@ export default function Production() {
 
       {s && !error && (
         <>
-          {s.grand_total === 0 ? (
+          {s.placed_total === 0 && s.infeed_total === 0 ? (
             <EmptyState message={`Geen productiedata op ${date}`} />
           ) : (
             <>
               <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
                 <KPICard
-                  label="Totaal producten"
-                  value={s.grand_total.toLocaleString("nl-NL")}
-                  color="red"
+                  label="Geplaatst"
+                  value={s.placed_total.toLocaleString("nl-NL")}
+                  subtitle="door de robots"
+                  color="green"
+                />
+                <KPICard
+                  label="Instroom"
+                  value={s.infeed_total.toLocaleString("nl-NL")}
+                  subtitle="gedetecteerd (camera)"
+                  color="blue"
+                />
+                <KPICard
+                  label="Gemist"
+                  value={s.missed_total.toLocaleString("nl-NL")}
+                  subtitle={s.yield_pct != null ? `rendement ${s.yield_pct}%` : "naar overflow"}
+                  color={s.yield_pct != null && s.yield_pct >= 90 ? "green" : "red"}
                 />
                 <KPICard
                   label="Piekuur"
                   value={s.peak_hour ?? "-"}
-                  subtitle={`${s.peak_hour_total.toLocaleString("nl-NL")} producten`}
-                  color="blue"
-                />
-                <KPICard
-                  label="Stilstand"
-                  value={`${avgDowntime} min`}
-                  subtitle="gemiddeld per lijn"
+                  subtitle={`${s.peak_hour_total.toLocaleString("nl-NL")} geplaatst`}
                   color="gray"
-                />
-                <KPICard
-                  label="Lijn-balans"
-                  value={s.line_balance != null ? s.line_balance.toFixed(2) : "-"}
-                  subtitle="1.0 = perfect in balans"
-                  color={s.line_balance != null && s.line_balance >= 0.7 ? "green" : "red"}
                 />
                 <KPICard
                   label="MTTR"
@@ -123,15 +126,15 @@ export default function Production() {
                 />
               </div>
 
-              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {s.per_line.map((total, i) => (
+              <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                {s.per_robot.map((total, i) => (
                   <div
                     key={i}
                     className="bg-white rounded-xl border border-gray-200 p-5"
-                    style={{ borderTop: `4px solid ${LINE_COLORS[i]}` }}
+                    style={{ borderTop: `4px solid ${ROBOT_COLORS[i]}` }}
                   >
                     <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
-                      {LINE_NAMES[i]}
+                      {ROBOT_NAMES[i]}
                     </p>
                     <p className="text-2xl font-bold text-gray-900 mt-1">
                       {total.toLocaleString("nl-NL")}
@@ -141,6 +144,17 @@ export default function Production() {
                     </p>
                   </div>
                 ))}
+                <div className="bg-white rounded-xl border border-gray-200 p-5">
+                  <p className="text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    Robot-balans
+                  </p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">
+                    {s.robot_balance != null ? s.robot_balance.toFixed(2) : "-"}
+                  </p>
+                  <p className="text-xs text-gray-400 mt-1">
+                    1.0 = beide robots gelijk{avgDowntime ? `, gem. ${avgDowntime} min stilstand` : ""}
+                  </p>
+                </div>
               </div>
 
               {h.length === 0 ? (
